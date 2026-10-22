@@ -2,6 +2,14 @@
 
 
 
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+
 # Labo 1
 
 def error(x,y):
@@ -19,6 +27,14 @@ def matricesIguales(A,B):
     Devuelve True si ambas matrices son iguales y False en otro caso.
     Considerar que las matrices pueden tener distintas dimensiones, ademas de distintos valores.
     '''
+
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
 
 # Labo 2
 
@@ -56,6 +72,14 @@ def transafin(v, theta, s, b):
     una tira de números s (en R2), y un vector b en R2.
     Retorna el vector w resultante de aplicar la transformación afín a v
     """
+
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
 
 # Labo 3
 
@@ -130,15 +154,139 @@ def esSDP(A, atol=1e-8):
     la factorización LDV.
     """
 
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+#---------------------------------------------------------------------------------#
+
 # Labo 5
 
+def QR_con_GS(A, tol=1e-12, retorna_nops=False):
+    """
+    A una matriz de n x n
+    tol la tolerancia con la que se filtran elementos nulos en R
+    retorna_nops permite (opcionalmente) retornar el numero de
+    operaciones realizado
+    retorna matrices Q y R calculadas con Gram Schmidt (y como
+    tercer argumento opcional, el numero de operaciones).
+    Si la matriz A no es de n x n, debe retornar None
+    """
+
+def QR_con_HH(A, tol=1e-12, extras=False):
+    """
+    A una matriz de m x n (m>=n)
+    tol la tolerancia con la que se filtran elementos nulos en R
+    retorna matrices Q y R calculadas con reflexiones de
+    Householder
+    Si la matriz A no cumple m>=n, debe retornar None
+    extras : bool, opcional
+    Si es True, devuelve informacion extra sobre el proceso de
+    factorizacion.
+    Por defecto es False. Esto lo hacemos para poder graficar
+    el proceso.
+    Devuelve la factorizacion QR de A usando reflectores de
+    Householder.
+    Devuelve:
+    Q, R, extra_info (si extras es True)
+    Q, R (si extras es False)
+    extra_info es un diccionario con la clave:
+    'R_matrices' : lista de las matrices R en cada paso
+    'Q_matrices' : lista de las matrices Q en cada paso
+
+    """
+
+def calculaQR(A, metodo='RH', tol=1e-12):
+    """
+    A una matriz de n x n
+    tol la tolerancia con la que se filtran elementos nulos en R
+    metodo = ['RH', 'GS'] usa reflectores de Householder (RH) o Gram
+    Schmidt (GS) para realizar la factorizacion
+    retorna matrices Q y R calculadas con Gram Schmidt (y como
+    tercer argumento opcional, el numero de operaciones)
+    Si el metodo no esta entre las opciones, retorna None
+    """
 
 # Labo 6
+
+def metpot2k(A, tol=1e-15, K=1000):
+    """
+    A una matriz de n x n
+    tol la tolerancia en la diferencia entre un paso y el siguiente de la estimacion del
+    autovector.
+    K el numero maximo de iteraciones a realizarse.
+    Retorna vector v, autovalor lambda y numero de iteracion realizadas k
+    """
+
+def diagRH(A, tol=1e-15, K=1000):
+    """
+    A una matriz simetrica de n x n
+    tol la tolerancia en la diferencia entre un paso y el siguiente de la estimacion del
+    autovector. K el numero maximo de iteraciones a realizarse
+    retorna matriz de autovectores S y matriz de autovalores D, tal que A = S D S.T
+    Si la matriz A no es simetrica, debe retornar None
+    """
 
 
 # Labo 7
 
+def transicionesalazarcontinuas(n):
+    """
+    n la cantidad de filas (columnas) de la matriz de transición.
+    Retorna matriz T de n x n normalizada por columnas, y con entradas al azar en el
+    intervalo [0, 1]
+    """
+
+def transicionesalazaruniforme(n, thres):
+    """
+    n la cantidad de filas (columnas) de la matriz de transición.
+    thres probabilidad de que una entrada sea distinta de cero.
+    Retorna matriz T de n x n normalizada por columnas. El elemento i, j es distinto de
+    cero si el número generado al azar para i, j es menor o igual a thres. Todos los
+    elementos de la columna $j$ son iguales (a 1 sobre el número de elementos distintos
+    de cero en la columna).
+    """
+
+def nucleo(A, tol=1e-15):
+    """
+    A una matriz de m x n
+    tol la tolerancia para asumir que un vector esta en el nucleo.
+    Calcula el nucleo de la matriz A diagonalizando la matriz traspuesta(A) * A (* la
+    multiplicacion matricial), usando el medodo diagRH. El nucleo corresponde a los
+    autovectores de autovalor con modulo <= tol.
+    Retorna los autovectores en cuestion, como una matriz de n x k, con k el numero de
+    autovectores en el nucleo.
+    """
+
+def crearabla(listado, mfilas, ncolumnas, tol=1e-15):
+    """
+    Recibe una lista listado, con tres elementos: lista con indices i, lista con indices
+    j, y lista con valores Aij de la matriz A. Tambien las dimensiones de la matriz a
+    traves de mfilas y ncolumnas. Los elementos menores a tol se descartan.
+    Idealmente, el listado debe incluir unicamente posiciones correspondientes a valores
+    distintos de cero. Retorna una lista con:
+    - Diccionario {(i, j) : Aij} que representa los elementos no nulos de la matriz A. Los
+    elementos con modulo menor a tol deben descartarse por default.
+    - Tupla (mfilas, ncolumnas) que permita conocer las dimensiones de la matriz.
+    """
+
+def multiplicaralavector(A, v):
+    """
+    Recibe una matriz rala creada con crearabla y un vector v.
+    Retorna un vector w resultado de multiplicar A con v
+    """
+
 
 # Labo 8
 
+def svdreducida(A, k="max", tol=1e-15):
+    """
+    A la matriz de interes (de m x n)
+    k el numero de valores singulares (y vectores) a retener.
+    tol la tolerancia para considerar un valor singular igual a cero
+    Retorna hatU (matriz de m x k), hatSig (vector de k valores singulares) y hatV (
+    matriz de n x k)
+    """
 
