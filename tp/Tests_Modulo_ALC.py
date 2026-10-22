@@ -10,6 +10,45 @@
 
 # Labo 1
 
+# tests01.py
+# Archivo de testeo para las funciones del Laboratorio 1.
+# Contiene los tests provistos en el enunciado original.
+import numpy as np
+
+# Se asume que el módulo implementado se llama lab1 y se encuentra en el mismo directorio
+from lab1 import error, error_relativo, matricesIguales, esSimetrica
+
+# Este módulo debe contener las implementaciones de:
+# - error(x, y)
+# - error_relativo(x, y)
+# - matricesIguales(A, B)
+
+# Función auxiliar 'sonIguales' provista en el enunciado para testear 'error'.
+def sonIguales(x, y, atol=1e-08):
+    # Se asume que la función error(x,y) retorna |x-y|
+    return np.allclose(error(x, y), 0, atol=atol)
+
+# Bloque de Aserciones
+print("\nIniciando serie de tests del enunciado...")
+
+assert(not sonIguales(1, 1.1))
+assert(sonIguales(1, 1 + np.finfo('float64').eps))
+assert(not sonIguales(1, 1 + np.finfo('float32').eps))
+assert(not sonIguales(np.float16(1), np.float16(1) + np.finfo('float32').eps))
+assert(sonIguales(np.float16(1), np.float16(1) + np.finfo('float16').eps, atol=1e-3))
+
+assert(np.allclose(error_relativo(1, 1.1), 0.1))
+assert(np.allclose(error_relativo(2, 1), 0.5))
+assert(np.allclose(error_relativo(-1, -1), 0))
+assert(np.allclose(error_relativo(1, -1), 2))
+
+assert(matricesIguales(np.diag([1, 1]), np.eye(2)))
+assert(matricesIguales(np.linalg.inv(np.array([[1, 2], [3, 4]])) @ np.array([[1, 2], [3, 4]]), np.eye(2)))
+assert(not matricesIguales(np.array([[1, 2], [3, 4]]).T, np.array([[1, 2], [3, 4]])))
+
+print("¡Todos los tests iniciales del archivo han pasado exitosamente!")
+
+
 #---------------------------------------------------------------------------------#
 #---------------------------------------------------------------------------------#
 #---------------------------------------------------------------------------------#
@@ -19,6 +58,71 @@
 #---------------------------------------------------------------------------------#
 
 # Labo 2
+
+
+
+import numpy as np
+from lab2 import rota, escala, rota_y_escala, afin, trans_afin
+
+
+# --- Tests extraídos del enunciado ---
+
+print("\nIniciando serie de tests del Laboratorio 2...")
+
+# Tests para rota
+assert(np.allclose(rota(0), np.eye(2)))
+assert(np.allclose(rota(np.pi/2), np.array([[0, -1],[1, 0]])))
+assert(np.allclose(rota(np.pi), np.array([[-1, 0],[0, -1]])))
+
+# Tests para escala
+assert(np.allclose(escala([2,3]), np.array([[2,0],[0,3]])))
+assert(np.allclose(escala([1,1,1]), np.eye(3)))
+assert(
+    np.allclose(escala([0.5,0.25]), np.array([[0.5,0],[0,0.25]]))
+)
+
+# Tests para rota_y_escala
+assert(
+    np.allclose(rota_y_escala(0,[2,3]), np.array([[2,0],[0,3]]))
+)
+assert(np.allclose(
+    rota_y_escala(np.pi/2,[1,1]), np.array([[0,-1],[1,0]])
+))
+assert(np.allclose(
+    rota_y_escala(np.pi,[2,2]), np.array([[-2,0],[0,-2]])
+))
+
+# Tests para afin
+assert(np.allclose(
+    afin(0,[1,1],[1,2]),
+    np.array([[1,0,1],
+              [0,1,2],
+              [0,0,1]])))
+assert(np.allclose(afin(np.pi/2,[1,1],[0,0]),
+    np.array([[0,-1,0],
+              [1,0,0],
+              [0,0,1]])))
+assert(np.allclose(afin(0,[2,3],[1,1]),
+    np.array([[2,0,1],
+              [0,3,1],
+              [0,0,1]])))
+
+# Tests para trans_afina
+
+assert(np.allclose(
+    trans_afin(np.array([1,0]), np.pi/2,[1,1],[0,0]),
+    np.array([0,1])
+))
+assert(np.allclose(
+    trans_afin(np.array([1,1]), 0,[2,3],[0,0]),
+    np.array([2,3])
+))
+assert(np.allclose(
+    trans_afin(np.array([1,0]), np.pi/2,[3,2],[4,5]),
+    np.array([4,7])
+))
+
+print("¡Todos los tests del Laboratorio 2 han pasado exitosamente!")
 
 #---------------------------------------------------------------------------------#
 #---------------------------------------------------------------------------------#
@@ -669,3 +773,58 @@ assert np.allclose(multiplica_rala_vector(A_rala,v), A @ v)
 #---------------------------------------------------------------------------------#
 
 #Labo 8
+
+# Tests L08
+def svd_reducida(A,k="max",tol=1e-15):
+    """
+    A la matriz de interes (de m x n)
+    k el numero de valores singulares (y vectores) a retener.
+    tol la tolerancia para considerar un valor singular igual a cero
+    Retorna hatU (matriz de m x k), hatSig (vector de k valores singulares) y hatV (matriz de n x k)
+    """
+    raise NotImplementedError("Implementar svd_reducida!")
+
+    
+# Matrices al azar
+def genera_matriz_para_test(m,n=2,tam_nucleo=0):
+    if tam_nucleo == 0:
+        A = np.random.random((m,n))
+    else:
+        A = np.random.random((m,tam_nucleo))
+        A = np.hstack([A,A])
+    return(A)
+
+def test_svd_reducida_mn(A,tol=1e-15):
+    m,n = A.shape
+    hU,hS,hV = svd_reducida(A,tol=tol)
+    nU,nS,nVT = np.linalg.svd(A)
+    r = len(hS)+1
+    assert np.all(np.abs(np.abs(np.diag(hU.T @ nU))-1)<10**r*tol), 'Revisar calculo de hat U en ' + str((m,n))
+    assert np.all(np.abs(np.abs(np.diag(nVT @ hV))-1)<10**r*tol), 'Revisar calculo de hat V en ' + str((m,n))
+    assert len(hS) == len(nS[np.abs(nS)>tol]), 'Hay cantidades distintas de valores singulares en ' + str((m,n))
+    assert np.all(np.abs(hS-nS[np.abs(nS)>tol])<10**r*tol), 'Hay diferencias en los valores singulares en ' + str((m,n))
+
+for m in [2,5,10,20]:
+    for n in [2,5,10,20]:
+        for _ in range(10):
+            A = genera_matriz_para_test(m,n)
+            test_svd_reducida_mn(A)
+
+
+# Matrices con nucleo
+
+m = 12
+for tam_nucleo in [2,4,6]:
+    for _ in range(10):
+        A = genera_matriz_para_test(m,tam_nucleo=tam_nucleo)
+        test_svd_reducida_mn(A)
+
+# Tamaños de las reducidas
+A = np.random.random((8,6))
+for k in [1,3,5]:
+    hU,hS,hV = svd_reducida(A,k=k)
+    assert hU.shape[0] == A.shape[0], 'Dimensiones de hU incorrectas (caso a)'
+    assert hV.shape[0] == A.shape[1], 'Dimensiones de hV incorrectas(caso a)'
+    assert hU.shape[1] <= k, 'Dimensiones de hU incorrectas (caso a)'
+    assert hV.shape[1] <= k, 'Dimensiones de hV incorrectas(caso a)'
+    assert len(hS) <= k, 'Tamaño de hS incorrecto'
