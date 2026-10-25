@@ -1,6 +1,14 @@
 import numpy as np
 
+def norma2(v): #calcula la norma 2 de un vector
+    v = np.array(v)
+    n = len(v)
+    contador = 0
 
+    for i in range(n):
+        contador+= v[i]**2
+
+    return contador**(1/2)
 
 def diagRH(A, tol=1e-15, K=1000):
     n = A.shape[0]
@@ -76,7 +84,7 @@ def _calcular_bases_svd(A, tol=1e-15):
         return autovectores, valores_singulares, B, r, False
 
 
-def svd_reducida(id_matriz, k="max", tol=1e-15):
+def svd_reducida(A, k="max", tol=1e-15):
     """
     Calcula la SVD reducida de la matriz A (de m x n).
     Parámetros:

@@ -1,6 +1,43 @@
 import numpy as np
 
+def f(A, v):
+    """f_A(v) = Av / ||Av||"""
+    w = A @ v
+    return w / norma2(w)
 
+def f2(A, v):
+    """f_A^2(v) = f_A(f_A(v))"""
+    return f(A, f(A, v))
+
+
+def norma2(v): #calcula la norma 2 de un vector
+    v = np.array(v)
+    n = len(v)
+    contador = 0
+
+    for i in range(n):
+        contador+= v[i]**2
+
+    return contador**(1/2)
+
+def metpot2k(A, tol=1e-15, K=1000):
+    '''A una matriz de nxn.
+    tol la tolerancia en la diferencia entre un paso y el siguiente de la estimacion del autovector.
+    K el numero maximo de iteraciones a realizarse.
+    Retorna vector v, autovalor lambda y numero de iteraciones realizadas k'''
+    n = A.shape[0]
+    v = np.random.randn(n) #busca un vector al azar de tamano n
+    v = v / norma2(v)  #normaliza v 
+    v_t = f2(A, v) # hace la mutiliplacacion matricial y normaliza
+    e = v_t @ v
+    k = 0
+    while abs(e - 1) > tol and k < K:
+        v = v_t
+        v_t = f2(A, v)
+        e = v_t @ v
+        k += 1
+    lam = v_t @ A @ v_t            # cociente de Rayleigh (||v_t|| = 1)
+    return v_t, lam, k
 
 def diagRH(A, tol=1e-15, K=1000):
     n = A.shape[0]
@@ -76,7 +113,7 @@ def _calcular_bases_svd(A, tol=1e-15):
         return autovectores, valores_singulares, B, r, False
 
 
-def svd_reducida(id_matriz, k="max", tol=1e-15):
+def svd_reducida(A, k="max", tol=1e-15):
     """
     Calcula la SVD reducida de la matriz A (de m x n).
     Parámetros:
@@ -114,7 +151,7 @@ def svd_reducida(id_matriz, k="max", tol=1e-15):
         
         hatV = V[:, :k]
         for i in range(k):
-            if hatSig[i] > tol:
+            if hatSig[i].item() > tol:
                 hatU[:, i] = U_sig[:, i] / hatSig[i]
             else:
                 hatU[:, i] = 0.0
