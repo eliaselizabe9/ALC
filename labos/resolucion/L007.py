@@ -2,8 +2,8 @@
 import numpy as np
 import random
 
-def matmul_custom(A, B):
-    """Multiplicación matricial/vectorial sin usar @ ni np.matmul."""
+def arroba(A, B):
+    # Multiplicación matricial sin @
     A = np.asarray(A)
     B = np.asarray(B)
     
@@ -24,7 +24,7 @@ def matmul_custom(A, B):
 
 def f_A(A, v):
     """Aplica f_A(v) = Av / ||Av||2."""
-    w_prime = matmul_custom(A, v)
+    w_prime = arroba(A, v)
     norma = np.linalg.norm(w_prime)
     if norma > 0:
         return w_prime / norma
@@ -41,18 +41,18 @@ def metpot2k(A, tol=1e-15, K=1000):
     v = v / np.linalg.norm(v)
     
     v_tilde = f_A(A, f_A(A, v))
-    e = matmul_custom(v_tilde, v)
+    e = arroba(v_tilde, v)
     k = 0
     
     while np.abs(e - 1.0) > tol and k < K:
         v = v_tilde
         v_tilde = f_A(A, f_A(A, v))
-        e = matmul_custom(v_tilde, v)
+        e = arroba(v_tilde, v)
         k += 1
         
     # Estimación del autovalor lambda = v_tilde^T * A * v_tilde
-    Av = matmul_custom(A, v_tilde)
-    lam = matmul_custom(v_tilde, Av)
+    Av = arroba(A, v_tilde)
+    lam = arroba(v_tilde, Av)
     
     return v_tilde, lam, k
 
@@ -99,13 +99,13 @@ def diagRH(A, tol=1e-15, K=1000):
     # Caso base n = 2
     if n == 2:
         S = Hv1
-        HA = matmul_custom(Hv1, A)
-        D = matmul_custom(HA, Hv1.T)
+        HA = arroba(Hv1, A)
+        D = arroba(HA, Hv1.T)
         return S, D
     else:
         # 4. Transformar B = Hv1 * A * Hv1^T
-        HA = matmul_custom(Hv1, A)
-        B = matmul_custom(HA, Hv1.T)
+        HA = arroba(Hv1, A)
+        B = arroba(HA, Hv1.T)
         
         # 5. Paso recursivo sobre el bloque inferior A_bar (submatriz (n-1)x(n-1))
         A_bar = B[1:, 1:]
@@ -120,7 +120,7 @@ def diagRH(A, tol=1e-15, K=1000):
         M[0, 0] = 1.0
         M[1:, 1:] = S_bar
         
-        S = matmul_custom(Hv1, M)
+        S = arroba(Hv1, M)
         return S, D
 
 
@@ -197,7 +197,7 @@ def nucleo(A, tol=1e-15):
     Retorna los autovectores en cuestion, como una matriz de n x k, con k el numero de autovectores en el nucleo.
     """
     m, n = A.shape
-    B = matmul_custom(A.T, A) # B de dim nxn
+    B = arroba(A.T, A) # B de dim nxn
     S,D = diagRH(B, tol)
 
     indices = []
