@@ -9,7 +9,6 @@ def QR_con_GS(A, tol=1e-12, retorna_nops=False):
     retorna matrices Q y R calculadas con Gram Schmidt (y como tercer argumento opcional, el numero de operaciones).
     Si la matriz A no es de n x n, debe retornar None
     """
-    A = np.asarray(A, dtype=float)
     if A.ndim != 2:
         return None
     
@@ -23,14 +22,14 @@ def QR_con_GS(A, tol=1e-12, retorna_nops=False):
     ops = 0
 
     for i in range(n):
-        # Paso 1: Norma euclídea de la columna V[:, i] mediante bucles escalares
+        # Calculamos la norma euclídea de la columna V[:, i]
         norma_sq = 0.0
         for k in range(n):
             norma_sq += V[k, i] * V[k, i]
-            ops += 2  # 1 mult + 1 suma
+            ops += 2
 
-        r_ii = np.sqrt(norma_sq)
-        ops += 1  # 1 raíz cuadrada
+        r_ii = norma_sq**(1/2)
+        ops += 1 
 
         if r_ii < tol:
             R[i, i] = 0.0
@@ -40,9 +39,9 @@ def QR_con_GS(A, tol=1e-12, retorna_nops=False):
             R[i, i] = r_ii
             for k in range(n):
                 Q[k, i] = V[k, i] / r_ii
-                ops += 1  # 1 división
+                ops += 1
 
-        # Paso 2: Ortogonalización sobre las columnas restantes (j = i+1 ... n-1)
+        # Ortogonalización sobre las columnas restantes (j = i+1 ... n-1)
         for j in range(i + 1, n):
             dot = 0.0
             for k in range(n):
@@ -56,7 +55,7 @@ def QR_con_GS(A, tol=1e-12, retorna_nops=False):
 
             for k in range(n):
                 V[k, j] -= dot * Q[k, i]
-                ops += 2  # 1 mult + 1 resta
+                ops += 2 
 
     if retorna_nops:
         return Q, R, ops
@@ -81,7 +80,6 @@ def QR_con_HH(A, tol=1e-12, extras=False):
         'R_matrices': lista de las matrices R en cada paso
         'Q_matrices': lista de las matrices Q en cada paso
     """
-    A = np.asarray(A, dtype=float)
     if A.ndim != 2:
         return None
 
@@ -101,7 +99,6 @@ def QR_con_HH(A, tol=1e-12, extras=False):
     for k in range(num_pasos):
         sub_len = m - k
 
-        # 1. Norma del subvector x = R[k:m, k]
         norma_x_sq = 0.0
         for i in range(k, m):
             norma_x_sq += R[i, k] * R[i, k]
@@ -177,7 +174,6 @@ def calculaQR(A, metodo='RH', tol=1e-12):
     retorna matrices Q y R calculadas con Gram Schmidt (y como tercer argumento opcional, el numero de operaciones)
     Si el metodo no esta entre las opciones, retorna None
     """
-    A = np.asarray(A, dtype=float)
     if A.ndim != 2:
         return None
 

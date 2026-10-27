@@ -7,16 +7,15 @@ def calculaLU(A):
     L es triangular inferior con 1s en la diagonal y U es triangular superior.
     Retorna (L, U, ops) o None si la matriz no admite la factorizacion.
     """
-    A_arr = np.array(A, dtype=float)
-    if A_arr.ndim != 2:
+    if A.ndim != 2:
         return None
 
-    n, m = A_arr.shape
+    n, m = A.shape
     if n != m or n == 0:
         return None
 
     L = np.eye(n, dtype=float)
-    U = A_arr.copy()
+    U = A.copy()
     ops = 0
 
     for k in range(n - 1):
@@ -46,32 +45,30 @@ def res_tri(T, b, inferior=True):
     Si inferior=True, realiza sustitucion hacia adelante.
     Si inferior=False, realiza sustitucion hacia atras.
     """
-    T_arr = np.array(T, dtype=float)
-    b_arr = np.array(b, dtype=float).flatten()
-    n = len(b_arr)
+    n = b.shape[0]
 
     x = np.zeros(n, dtype=float)
 
     if inferior:
         for i in range(n):
-            if abs(T_arr[i, i]) <= 1e-15:
+            if abs(T[i, i]) <= 1e-15:
                 return None
 
             suma = 0.0
             for j in range(i):
-                suma += T_arr[i, j] * x[j]
+                suma += T[i, j] * x[j]
 
-            x[i] = (b_arr[i] - suma) / T_arr[i, i]
+            x[i] = (b[i] - suma) / T[i, i]
     else:
         for i in range(n - 1, -1, -1):
-            if abs(T_arr[i, i]) <= 1e-15:
+            if abs(T[i, i]) <= 1e-15:
                 return None
 
             suma = 0.0
             for j in range(i + 1, n):
-                suma += T_arr[i, j] * x[j]
+                suma += T[i, j] * x[j]
 
-            x[i] = (b_arr[i] - suma) / T_arr[i, i]
+            x[i] = (b[i] - suma) / T[i, i]
 
     return x
 
@@ -87,8 +84,7 @@ def inversa(A):
         return None
 
     L, U, _ = res
-    A_arr = np.array(A, dtype=float)
-    n = A_arr.shape[0]
+    n = A.shape[0]
     X = np.zeros((n, n), dtype=float)
 
     for j in range(n):
@@ -116,8 +112,7 @@ def calculaLDV(A):
         return None
 
     L, U, _ = res
-    A_arr = np.array(A, dtype=float)
-    n = A_arr.shape[0]
+    n = A.shape[0]
 
     D = np.zeros((n, n), dtype=float)
     V = np.zeros((n, n), dtype=float)
@@ -142,22 +137,21 @@ def esSDP(A, atol=1e-8):
     Verifica simetria bajo tolerancia atol y evalua positividad estricta
     de los elementos de la diagonal D mediante calculaLDV.
     """
-    A_arr = np.array(A, dtype=float)
-    if A_arr.ndim != 2:
+    if A.ndim != 2:
         return False
 
-    n, m = A_arr.shape
+    n, m = A.shape
     if n != m or n == 0:
         return False
 
     # Verificacion explicita de simetria
     for i in range(n):
         for j in range(i + 1, n):
-            if abs(A_arr[i, j] - A_arr[j, i]) > atol:
+            if abs(A[i, j] - A[j, i]) > atol:
                 return False
 
     # Obtencion de factorizacion LDV
-    res = calculaLDV(A_arr)
+    res = calculaLDV(A)
     if res is None:
         return False
 
