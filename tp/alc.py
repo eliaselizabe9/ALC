@@ -775,7 +775,7 @@ def nucleo(A, tol=1e-15):
     autovectores en el nucleo.
     """
     m, n = A.shape
-    B = arroba(A.T, A) # B de dim nxn
+    B = multiplicar matrices(A.T, A) # B de dim nxn
     S,D = diagRH(B, tol)
 
     indices = []
