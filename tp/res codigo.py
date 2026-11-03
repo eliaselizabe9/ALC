@@ -1,142 +1,10 @@
 import numpy as np
-from alc import arroba,diagRH, QR_con_HH
-
-# ejercicio 2 a
-def obtenerQ3d(imgPts, objPts):
-    """
-    Construye la matriz Q de 2n x 12 para el sistema Qm = 0 (DLT 3D)
-    
-    Parámetros:
-        imgPts: array de n x 2 con coordenadas (u, v) en la imagen.
-        objPts: array de n x 3 con coordenadas (U, V, W) en el espacio 3D.
-    Retorna:
-        Q: matriz de dimensión 2n x 12.
-    """
-    n = objPts.shape[0]
-    Q = np.zeros((2 * n, 12))
-    
-    for i in range(n):
-        U, V, W = objPts[i, 0], objPts[i, 1], objPts[i, 2]
-        u, v = imgPts[i, 0], imgPts[i, 1]
-        
-        P_i = np.array([U, V, W, 1.0])
-        
-        # Fila 2i
-        Q[2 * i, 0:4] = P_i
-        Q[2 * i, 4:8] = 0.0
-        Q[2 * i, 8:12] = -u * P_i
-        
-        # Fila 2i + 1
-        Q[2 * i + 1, 0:4] = 0.0
-        Q[2 * i + 1, 4:8] = P_i
-        Q[2 * i + 1, 8:12] = -v * P_i
-        
-    return Q
-
-# ejercicio 2 b
-
-def resolverDLT3D(Q):
-    """
-    Encuentra la matriz de proyección M (3x4) resolviendo min ||Qm||^2 sujeto a ||m||=1
-    Aplica la diagonalización de Q^T * Q mediante el método del labo 6 diagRH
-    """
-    # Q^T * Q es una matriz de 12x12 simétrica
-    QtQ = arroba(Q.T, Q)
-    
-    # Diagonalización vía Householder y Método de la Potencia
-    S, D = diagRH(QtQ, tol=1e-15, K=10000)
-    
-    # Busco la columna asociada al menor autovalor
-    autovalores = np.array([D[i, i] for i in range(12)])
-    idx_min = np.argmin(np.abs(autovalores))
-    
-    m = S[:, idx_min]
-    m = m / np.linalg.norm(m)
-    
-    # Reorganizamos el vector m de 12 elementos en una matriz M de 3x4
-    M = m.reshape((3, 4))
-    return M
-
-# Ejercicio 2.c y 2.d: Descomposición de M en K, R y t
-def descomposicion_RQ_3x3(A):
-    """
-    Realiza la descomposición RQ de una matriz A de 3x3 usando factorización QR.
-    A = K * R donde K es triangular superior y R es ortogonal.
-    """
-    # Matriz de permutación/reversión P
-    P = np.array([[0., 0., 1.],
-                  [0., 1., 0.],
-                  [1., 0., 0.]])
-    
-    # (P * A)^T = A^T * P
-    PA_T = arroba(P, A).T
-    
-    # Factorización QR propia de ALC sobre PA_T = Q_qr * R_qr
-    Q_qr, R_qr = QR_con_HH(PA_T)  # Función QR del laboratorio
-    
-    # A = P * R_qr^T * Q_qr^T * P * P
-    K = arroba(P, arroba(R_qr.T, P))
-    R = arroba(P, Q_qr.T)
-    
-    # Asegurar que la diagonal de K sea positiva
-    for i in range(3):
-        if K[i, i] < 0:
-            K[:, i] = -K[:, i]
-            R[i, :] = -R[i, :]
-            
-    # Garantizar det(R) = +1
-    if np.linalg.det(R) < 0:
-        R = -R
-        K = -K
-        
-    return K, R
-
-
-def devolverMatricesCalibracion3d(M, fijar_sesgo_cero=False, igualar_focales=False):
-    """
-    Descompone M (3x4) en K (intrínsecos), R (rotación) y t (traslación).
-    Permite opcionalmente imponer gamma = 0 y/o alpha_u = alpha_v.
-    """
-    A = M[:, 0:3]
-    b = M[:, 3]
-    
-    # Descomposición RQ
-    K, R = descomposicion_RQ_3x3(A)
-    
-    # Normalizar K para que K[2,2] == 1
-    K = K / K[2, 2]
-    
-    # Imponer restricciones opcionales
-    if fijar_sesgo_cero:
-        K[0, 1] = 0.0  # gamma = 0
-        
-    if igualar_focales:
-        alpha_prom = (K[0, 0] + K[1, 1]) / 2.0
-        K[0, 0] = alpha_prom
-        K[1, 1] = alpha_prom
-        
-    # Resolver t: K * t = b -> t = K^-1 * b
-    # Como K es triangular superior de 3x3, se resuelve por sustitución hacia atrás
-    t = np.zeros(3)
-    t[2] = b[2] / K[2, 2]
-    t[1] = (b[1] - K[1, 2] * t[2]) / K[1, 1]
-    t[0] = (b[0] - K[0, 1] * t[1] - K[0, 2] * t[2]) / K[0, 0]
-    
-    return R, t, K
-
-
-
-
-import numpy as np
 from alc import arroba, diagRH, QR_con_HH
 
-# =============================================================================
-# EJERCICIO 2.a: CONSTRUCCIÓN DE LA MATRIZ Q (DLT 3D)
-# =============================================================================
-
+# EJERCICIO 2.a
 def obtenerQ3d(imgPts, objPts):
     """
-    Construyo la matriz Q de dimensión 2n x 12 para el sistema homogéneo Qm = 0.
+    Construye la matriz Q de dimensión 2n x 12 para el sistema homogéneo Qm = 0.
     
     Parámetros:
         imgPts: array de n x 2 con coordenadas proyectadas (u, v) en la imagen.
@@ -167,10 +35,7 @@ def obtenerQ3d(imgPts, objPts):
     return Q
 
 
-# =============================================================================
-# EJERCICIO 2.b: RESOLUCIÓN DEL SISTEMA HOMOGÉNEO Qm = 0
-# =============================================================================
-
+# EJERCICIO 2.b
 def resolverDLT3D(Q):
     """
     Resuelvo el sistema DLT 3D buscando el vector m que minimiza ||Qm||^2 sujeto a ||m|| = 1.
@@ -201,10 +66,7 @@ def resolverDLT3D(Q):
     return M
 
 
-# =============================================================================
 # EJERCICIOS 2.c y 2.d: DESCOMPOSICIÓN DE M EN K, R Y t
-# =============================================================================
-
 def descomposicion_RQ_3x3(A):
     """
     Realizo la descomposición RQ de una matriz A de 3x3 mediante la factorización QR de alc.
