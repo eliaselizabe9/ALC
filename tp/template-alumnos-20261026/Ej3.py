@@ -165,25 +165,25 @@ def calcularMatrizK2D(A):
     Retorna K (3 x 3, triangular superior, K[2,2] = 1), o None si B no
     resulta definida positiva.
     """
-    # 1) Mínimos cuadrados homogéneos
+    # Mínimos cuadrados homogéneos
     b = vectorMenorSingular(A)
 
-    # 2) Reconstruir B simétrica
+    # Reconstruir B simétrica
     B = np.array([[b[0], b[1], b[3]],
                   [b[1], b[2], b[4]],
                   [b[3], b[4], b[5]]])
 
-    # 3) Signo: B debe ser definida positiva (diagonal positiva), elige signo tal que lo sea
+    # Signo: B debe ser definida positiva (diagonal positiva), elige signo tal que lo sea
     if B[0, 0] < 0:
         B = -1.0 * B
 
-    # 4) Cholesky: B = L L^T, L = K^{-T}  =>  K = (L^T)^{-1}
+    # Cholesky: B = L L^T, L = K^{-T}  =>  K = (L^T)^{-1}
     L = choleskyPropio(B)
     if L is None:
         return None
     K = alc.inversa(L.T)
 
-    # 5) Normalizar K[2,2] = 1
+    # Normalizar K[2,2] = 1
     return K / K[2, 2]
 
 

@@ -3,36 +3,64 @@ import random
 
 # MULTIPLICACIÓN MATRICIAL
 def arroba(A, B):
-    """Multiplicación de matrices/vectores sin usar @ ni np.matmul."""
-    A = np.asarray(A)
-    B = np.asarray(B)
-    
+    """Multiplicación de matrices/vectores sin usar @ ni np.matmul.""" 
     if A.ndim == 2 and B.ndim == 2:
         res = np.zeros((A.shape[0], B.shape[1]))
         for i in range(A.shape[0]):
             for j in range(B.shape[1]):
-                res[i, j] = np.sum(A[i, :] * B[:, j])
+                res[i, j] = sum(A[i, :] * B[:, j])
         return res
     elif A.ndim == 2 and B.ndim == 1:
         res = np.zeros(A.shape[0])
         for i in range(A.shape[0]):
-            res[i] = np.sum(A[i, :] * B)
+            res[i] = sum(A[i, :] * B)
         return res
     elif A.ndim == 1 and B.ndim == 1:
-        return np.sum(A * B)
+        return sum(A * B)
 
 
 # LABO 1: NÚMEROS DE MÁQUINA Y ERRORES
 
+def traspuesta(A): 
+    A = np.array(A)
+    n,m = np.shape(A)
+    T = np.zeros((m,n))
+
+    for i in range(n):
+        for j in range(m):
+            T[j,i] = A [i,j]
+    return T   
+
+
+def esSimetrica(A, tol=1e-10):
+    """
+    Devuelve True si A es cuadrada y simétrica dentro de la tolerancia tol,
+    es decir, si |A[i,j] - A[j,i]| <= tol para todo i, j.
+    """
+    A = np.array(A)
+    n, m = A.shape
+
+    # Una matriz no cuadrada no puede ser simétrica
+    if n != m:
+        return False
+
+    T = traspuesta(A)
+    for i in range(n):
+        for j in range(m):
+            if abs(T[i, j] - A[i, j]) > tol:
+                return False
+    return True
+
+''' 
 def error(x, y):
-    '''Calcula el error absoluto de aproximar x usando y en float64.'''
+    #Calcula el error absoluto de aproximar x usando y en float64.
     x_f64 = np.float64(x)
     y_f64 = np.float64(y)
     return abs(x_f64 - y_f64)
 
 
 def error_relativo(x, y):
-    '''Calcula el error relativo de aproximar x usando y en float64.'''
+    #Calcula el error relativo de aproximar x usando y en float64.
     x_f64 = np.float64(x)
     y_f64 = np.float64(y)
     if x_f64 == 0:
@@ -41,11 +69,9 @@ def error_relativo(x, y):
 
 
 def matricesIguales(A, B):
-    '''Devuelve True si ambas matrices son iguales dentro de la tolerancia.'''
+    #Devuelve True si ambas matrices son iguales dentro de la tolerancia.
     atol = 1e-12
     rtol = 1e-9
-    A = np.asarray(A)
-    B = np.asarray(B)
     if A.shape != B.shape:
         return False
     
@@ -57,7 +83,7 @@ def matricesIguales(A, B):
             if error(a, b) >= atol + rtol * abs(b):
                 return False
     return True
-
+'''
 
 # LABO 2: TRANSFORMACIONES LINEALES
 
@@ -111,7 +137,6 @@ def trans_afin(v, theta, s, b):
 
 def norma(x, p):
     '''Devuelve la norma p del vector x (p entero o 'inf').'''
-    x = np.asarray(x)
     if x.ndim != 1 or len(x) == 0:
         return None
     n = len(x)
@@ -343,43 +368,60 @@ def esSDP(A, atol=1e-8):
 # LABO 5: FACTORIZACIÓN QR
 
 def QR_con_GS(A, tol=1e-12, retorna_nops=False):
-    '''Factorización QR usando el método de Gram-Schmidt.'''
+    '''Factorización QR usando el método de Gram-Schmidt (versión reducida).'''
+
     if A.ndim != 2:
-        return None
-    n, m = A.shape
-    if n != m:
-        return None
-    V = A.copy()
-    Q = np.zeros((n, n), dtype=float)
-    R = np.zeros((n, n), dtype=float)
+        return (None, None, None) if retorna_nops else (None, None)
+        
+    m, n = A.shape
+    Q_temp = np.zeros((m, n))
+    R_temp = np.zeros((n, n))
     ops = 0
-    for i in range(n):
-        norma_sq = 0.0
-        for k in range(n):
-            norma_sq += V[k, i] * V[k, i]
-            ops += 2
-        r_ii = np.sqrt(norma_sq)
-        ops += 1
-        if r_ii < tol:
-            R[i, i] = 0.0
-            for k in range(n):
-                Q[k, i] = 0.0
-        else:
-            R[i, i] = r_ii
-            for k in range(n):
-                Q[k, i] = V[k, i] / r_ii
-                ops += 1
-        for j in range(i + 1, n):
+    r = 0 # Rango de la matriz
+    
+    for j in range(n):
+        q_tilde = np.zeros(m)
+        for i in range(m):
+            q_tilde[i] = A[i, j]
+        
+        for k in range(r):
             dot = 0.0
-            for k in range(n):
-                dot += Q[k, i] * V[k, j]
+            for i in range(m):
+                dot += Q_temp[i, k] * q_tilde[i]
                 ops += 2
             if abs(dot) < tol:
                 dot = 0.0
-            R[i, j] = dot
-            for k in range(n):
-                V[k, j] -= dot * Q[k, i]
+            R_temp[k, j] = dot
+            
+            for i in range(m):
+                q_tilde[i] -= dot * Q_temp[i, k]
                 ops += 2
+                
+        norma_sq = 0.0
+        for i in range(m):
+            norma_sq += q_tilde[i] * q_tilde[i]
+            ops += 2
+        norma = norma_sq ** 0.5
+        ops += 1
+        
+        if norma > tol:
+            R_temp[r, j] = norma
+            for i in range(m):
+                Q_temp[i, r] = q_tilde[i] / norma
+                ops += 1
+            r += 1
+            
+    # Recortar al tamaño r (rango) para descartar vectores ld
+    Q = np.zeros((m, r))
+    for i in range(m):
+        for j in range(r):
+            Q[i, j] = Q_temp[i, j]
+            
+    R = np.zeros((r, n))
+    for i in range(r):
+        for j in range(n):
+            R[i, j] = R_temp[i, j]
+            
     if retorna_nops:
         return Q, R, ops
     return Q, R
@@ -388,21 +430,27 @@ def QR_con_GS(A, tol=1e-12, retorna_nops=False):
 def QR_con_HH(A, tol=1e-12, extras=False):
     '''Factorización QR usando reflectores de Householder.'''
     if A.ndim != 2:
-        return None
+        return (None, None, None) if extras else (None, None)
+        
     m, n = A.shape
-    if m < n:
-        return None
-    R = A.copy()
+    
+    R = np.zeros((m, n))
+    for i in range(m):
+        for j in range(n):
+            R[i, j] = A[i, j]
+            
     Q = np.eye(m, dtype=float)
     R_lista = []
     Q_lista = []
     num_pasos = min(m - 1, n) if m == n else n
+    
     for k in range(num_pasos):
         sub_len = m - k
         norma_x_sq = 0.0
         for i in range(k, m):
             norma_x_sq += R[i, k] * R[i, k]
-        norma_x = np.sqrt(norma_x_sq)
+        norma_x = norma_x_sq ** 0.5
+        
         if norma_x > tol:
             signo = 1.0 if R[k, k] >= 0.0 else -1.0
             alpha = -signo * norma_x
@@ -410,10 +458,12 @@ def QR_con_HH(A, tol=1e-12, extras=False):
             v[0] = R[k, k] - alpha
             for i in range(1, sub_len):
                 v[i] = R[k + i, k]
+                
             norma_v_sq = 0.0
             for i in range(sub_len):
                 norma_v_sq += v[i] * v[i]
-            norma_v = np.sqrt(norma_v_sq)
+            norma_v = norma_v_sq ** 0.5
+            
             if norma_v > 1e-15:
                 u = np.zeros(sub_len, dtype=float)
                 for i in range(sub_len):
@@ -433,13 +483,24 @@ def QR_con_HH(A, tol=1e-12, extras=False):
                         dot += Q[i, k + j] * u[j]
                     for j in range(sub_len):
                         Q[i, k + j] -= 2.0 * dot * u[j]
+                        
         if extras:
-            R_lista.append(R.copy())
-            Q_lista.append(Q.copy())
+            R_lista.append(np.copy(R))
+            Q_lista.append(np.copy(Q))
+            
     for i in range(m):
         for j in range(n):
             if i > j or abs(R[i, j]) < tol:
                 R[i, j] = 0.0
+                
+    # Aseguramos que la diagonal de R sea siempre positiva
+    for i in range(min(m, n)):
+        if R[i, i] < -tol:
+            for j in range(n):
+                R[i, j] = -R[i, j]
+            for j in range(m):
+                Q[j, i] = -Q[j, i]
+                
     if extras:
         return Q, R, {'R_matrices': R_lista, 'Q_matrices': Q_lista}
     return Q, R
@@ -448,22 +509,21 @@ def QR_con_HH(A, tol=1e-12, extras=False):
 def calculaQR(A, metodo='RH', tol=1e-12):
     '''Wrapper para calcular la factorización QR.'''
     if A.ndim != 2:
-        return None
-    n, m = A.shape
-    if n != m:
-        return None
+        return None, None
+        
     if metodo == 'RH':
         return QR_con_HH(A, tol=tol, extras=False)
     elif metodo == 'GS':
         return QR_con_GS(A, tol=tol, retorna_nops=False)
-    return None
+        
+    # En caso de que pasen un metodo inválido, devolvemos (None, None) para pasar los test
+    return None, None
 
 
 # LABO 6: MÉTODO DE LA POTENCIA Y HOUSEHOLDER
-
 def norma2_vector(v):
-    v = np.asarray(v)
-    return float(np.sqrt(np.sum(v**2)))
+
+    return float((sum(v**2))**(1/2))
 
 
 def f_A(A, v):
@@ -471,7 +531,7 @@ def f_A(A, v):
     nrm = norma2_vector(w)
     if nrm > 0:
         return w / nrm
-    return np.zeros_like(v)
+    return np.zeros(len(v))
 
 
 def f2(A, v):
@@ -483,7 +543,7 @@ def householder(v1):
     e1 = np.zeros(n)
     e1[0] = 1.0
     u = e1 - v1
-    nu2 = float(np.sum(u * u))
+    nu2 = float(sum(u * u))
     if nu2 < 1e-30:
         return np.eye(n)
     uuT = np.zeros((n, n))
@@ -493,14 +553,14 @@ def householder(v1):
     return np.eye(n) - 2.0 * uuT / nu2
 
 
-def metpot2k(A, tol=1e-15, K=1000):
+def metpot2k(A, tol=1e-15, K=10000):
     '''Método de la potencia aplicando f_A dos veces por iteración (Algoritmo 1).'''
     n = A.shape[0]
     v = np.random.randn(n)
     v = v / norma2_vector(v)
     v_t = f2(A, v)
     e = float(arroba(v_t, v))
-    k = 0
+    k = 1
     while abs(e - 1.0) > tol and k < K:
         v = v_t
         v_t = f2(A, v)
@@ -511,30 +571,44 @@ def metpot2k(A, tol=1e-15, K=1000):
     return v_t, lam, k
 
 
-def diagRH(A, tol=1e-15, K=1000):
+def diagRH(A, tol=1e-15, K=10000):
     '''Diagonalización de matriz simétrica A vía MP y reflectores RH (Algoritmo 2).'''
     if A.ndim != 2 or A.shape[0] != A.shape[1]:
         return None
-    if not np.allclose(A, A.T, atol=1e-8):
+        
+    if not esSimetrica(A, tol=1e-8):
         return None
+        
     n = A.shape[0]
+
     if n == 1:
-        return np.eye(1), A.copy()
+        I = np.zeros((1, 1))
+        I[0, 0] = 1.0
+        A_copia = np.zeros((1, 1))
+        A_copia[0, 0] = A[0, 0]
+        return I, A_copia
+        
     v1, lam1, _ = metpot2k(A, tol, K)
     v1 = v1 / norma2_vector(v1)
     H = householder(v1)
     HA = arroba(H, A)
-    B = arroba(HA, H.T)
+    
+    B = arroba(HA, traspuesta(H))
+    
     if n == 2:
         return H, B
+        
     A_t = B[1:, 1:]
     S_t, D_t = diagRH(A_t, tol, K)
+    
     D = np.zeros((n, n))
     D[0, 0] = lam1
     D[1:, 1:] = D_t
+    
     S_1 = np.zeros((n, n))
     S_1[0, 0] = 1.0
     S_1[1:, 1:] = S_t
+    
     S = arroba(H, S_1)
     return S, D
 
@@ -609,7 +683,6 @@ def crea_rala(listado, m_filas, n_columnas, tol=1e-15):
 def multiplica_rala_vector(A, v):
     '''Multiplica una matriz rala A por un vector v.'''
     m, n = A[1]
-    v = np.asarray(v)
     if n != len(v):
         return None
     res = np.zeros(m)
@@ -621,59 +694,133 @@ def multiplica_rala_vector(A, v):
 # LABO 8: DESCOMPOSICIÓN EN VALORES SINGULARES (SVD REDUCIDA)
 
 def _calcular_bases_svd(A, tol=1e-15):
-    '''Función interna para calcular los componentes base de la SVD.'''
+    '''
+    Función interna para calcular los componentes base de la SVD.
+    Calcula los autovalores y autovectores ordenados de A^T * A (o A * A^T si conviene).
+    '''
     m, n = A.shape
     transpuesta = False
+    
+    # Si hay más columnas que filas, es más barato diagonalizar A * A^T
     if m < n:
-        A = A.T
+        A = traspuesta(A) # Función permitida (o se puede hacer A.T si tu cátedra lo permite explícitamente, pero traspuesta() es más seguro)
         transpuesta = True
         m, n = A.shape
-    AtA = arroba(A.T, A)
+        
+    AtA = arroba(traspuesta(A), A)
     S, D = diagRH(AtA, tol=tol)
-    autovalores = np.array([D[i, i] for i in range(n)])
+    
+    # Extraer los autovalores de la diagonal
+    autovalores = np.zeros(n)
+    for i in range(n):
+        autovalores[i] = D[i, i]
+        
     autovectores = S
+    
+    # Ordenar los autovalores de mayor a menor de forma manual (sin np.argsort ni sort con lambda)
     idx_ordenados = list(range(n))
-    idx_ordenados.sort(key=lambda i: autovalores[i], reverse=True)
-    autovalores_ord = np.array([autovalores[i] for i in idx_ordenados])
+    for i in range(n):
+        for j in range(0, n - i - 1):
+            if autovalores[idx_ordenados[j]] < autovalores[idx_ordenados[j + 1]]:
+                # Intercambiar índices
+                temp = idx_ordenados[j]
+                idx_ordenados[j] = idx_ordenados[j + 1]
+                idx_ordenados[j + 1] = temp
+                
+    # Reordenar autovalores y autovectores según los índices
+    autovalores_ord = np.zeros(n)
     autovectores_ord = np.zeros((n, n))
-    for col_idx, original_col in enumerate(idx_ordenados):
-        autovectores_ord[:, col_idx] = autovectores[:, original_col]
-    valores_singulares = np.sqrt(np.maximum(autovalores_ord, 0.0))
-    r = int(np.sum(valores_singulares > tol))
+    
+    for col_idx in range(n):
+        original_col = idx_ordenados[col_idx]
+        autovalores_ord[col_idx] = autovalores[original_col]
+        for row_idx in range(n):
+            autovectores_ord[row_idx, col_idx] = autovectores[row_idx, original_col]
+            
+    # Calcular los valores singulares (y forzamos a 0 los negativos por ruido numérico)
+    valores_singulares = np.zeros(n)
+    r = 0
+    for i in range(n):
+        val = autovalores_ord[i]
+        if val < 0.0:
+            val = 0.0
+        val_sing = val ** 0.5
+        valores_singulares[i] = val_sing
+        if val_sing > tol:
+            r += 1
+            
+    # Computar B = A * V
     B = arroba(A, autovectores_ord)
+    
     if transpuesta:
+        # Si traspusimos, lo que calculamos como V es en realidad U
         return B, valores_singulares, autovectores_ord, r, True
     else:
         return autovectores_ord, valores_singulares, B, r, False
 
 
 def svdreducida(A, k="max", tol=1e-15):
-    '''Retorna U_hat (m x k), Sig_hat (vector de k) y V_hat (n x k).'''
+    '''
+    Retorna hatU (matriz de m x k), hatSig (vector de k) y hatV (matriz de n x k).
+    '''
     m, n = A.shape
     res1, valores_singulares, res3, r, transpuesta = _calcular_bases_svd(A, tol)
+    
+    # Determinar la cantidad efectiva de valores singulares a retener (k_eff)
     if k == "max":
-        k_eff = max(1, r)
+        k_eff = r
+        if k_eff == 0:  # Si la matriz es nula, al menos devuelve rango 1 con ceros.
+            k_eff = 1
     else:
-        k_eff = min(int(k), len(valores_singulares), r)
-    hatSig = valores_singulares[:k_eff]
+        k_int = int(k)
+        if k_int < r:
+            k_eff = k_int
+        else:
+            k_eff = r
+        if k_eff > len(valores_singulares):
+            k_eff = len(valores_singulares)
+            
+    # Recortar el vector de valores singulares
+    hatSig = np.zeros(k_eff)
+    for i in range(k_eff):
+        hatSig[i] = valores_singulares[i]
+        
     hatU = np.zeros((m, k_eff))
     hatV = np.zeros((n, k_eff))
+    
     if not transpuesta:
         V = res1
-        U_sig = res3
-        hatV = V[:, :k_eff]
-        for i in range(k_eff):
-            if hatSig[i] > tol:
-                hatU[:, i] = U_sig[:, i] / hatSig[i]
+        U_sig = res3 # Esto es B = A * V
+        
+        # hatV son las primeras k_eff columnas de V
+        for i in range(n):
+            for j in range(k_eff):
+                hatV[i, j] = V[i, j]
+                
+        # hatU se obtiene dividiendo las columnas de B por el valor singular correspondiente
+        for j in range(k_eff):
+            if hatSig[j] > tol:
+                for i in range(m):
+                    hatU[i, j] = U_sig[i, j] / hatSig[j]
             else:
-                hatU[:, i] = 0.0
+                for i in range(m):
+                    hatU[i, j] = 0.0
     else:
-        V_sig = res1
+        V_sig = res1 # Esto es B = A^T * U
         U = res3
-        hatU = U[:, :k_eff]
-        for i in range(k_eff):
-            if hatSig[i] > tol:
-                hatV[:, i] = V_sig[:, i] / hatSig[i]
+        
+        # hatU son las primeras k_eff columnas de U
+        for i in range(m):
+            for j in range(k_eff):
+                hatU[i, j] = U[i, j]
+                
+        # hatV se obtiene dividiendo las columnas de B por el valor singular correspondiente
+        for j in range(k_eff):
+            if hatSig[j] > tol:
+                for i in range(n):
+                    hatV[i, j] = V_sig[i, j] / hatSig[j]
             else:
-                hatV[:, i] = 0.0
+                for i in range(n):
+                    hatV[i, j] = 0.0
+                    
     return hatU, hatSig, hatV

@@ -47,7 +47,7 @@ def resolverDLT3D(Q):
     # Diagonalizo QtQ mediante el Método de la Potencia y reflectores de Householder
     S, D = diagRH(QtQ, tol=1e-15, K=10000)
     
-    # Busco manualmente el índice del autovalor de menor valor absoluto
+    # Busco el índice del autovalor de menor valor absoluto
     idx_min = 0
     min_val = abs(D[0, 0])
     for i in range(1, 12):
