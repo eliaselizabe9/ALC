@@ -264,8 +264,10 @@ def calculaLU(A):
     n, m = A.shape
     if n != m or n == 0:
         return None
+    
     L = np.eye(n, dtype=float)
-    U = A.copy()
+    U = np.array(A, dtype=float)
+    
     ops = 0
     for k in range(n - 1):
         if abs(U[k, k]) <= 1e-15:
@@ -278,8 +280,10 @@ def calculaLU(A):
             for j in range(k + 1, n):
                 U[i, j] = U[i, j] - factor * U[k, j]
                 ops += 2
+                
     if abs(U[n - 1, n - 1]) <= 1e-15:
         return None
+        
     return L, U, ops
 
 
