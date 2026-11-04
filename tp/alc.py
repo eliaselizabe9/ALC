@@ -695,81 +695,88 @@ def multiplica_rala_vector(A, v):
 
 def _calcular_bases_svd(A, tol=1e-15):
     '''
-    Función interna para calcular los componentes base de la SVD.
-    Calcula los autovalores y autovectores ordenados de A^T * A (o A * A^T si conviene).
+    Función interna optimizada para calcular los componentes base de la SVD
+    evitando bucles costosos sobre dimensiones gigantes y manejando correctamente transposición.
     '''
     m, n = A.shape
     transpuesta = False
     
-    # Si hay más columnas que filas, es más barato diagonalizar A * A^T
+    # Si m < n (ej: 2 x 100000), diagonalizamos directamente A * A^T (de m x m)
+    # para evitar bucles gigantes en Python y prevenir el error de tiempo límite (TLE).
     if m < n:
-        A = traspuesta(A) # Función permitida (o se puede hacer A.T si tu cátedra lo permite explícitamente, pero traspuesta() es más seguro)
+        AtA = arroba(A, traspuesta(A))
         transpuesta = True
-        m, n = A.shape
+    else:
+        AtA = arroba(traspuesta(A), A)
         
-    AtA = arroba(traspuesta(A), A)
+    dim_analisis = AtA.shape[0]
     S, D = diagRH(AtA, tol=tol)
     
-    # Extraer los autovalores de la diagonal
-    autovalores = np.zeros(n)
-    for i in range(n):
+    autovalores = np.zeros(dim_analisis)
+    for i in range(dim_analisis):
         autovalores[i] = D[i, i]
         
     autovectores = S
     
-    # Ordenar los autovalores de mayor a menor de forma manual (sin np.argsort ni sort con lambda)
-    idx_ordenados = list(range(n))
-    for i in range(n):
-        for j in range(0, n - i - 1):
+    # Ordenamiento de burbuja manual de mayor a menor
+    idx_ordenados = list(range(dim_analisis))
+    for i in range(dim_analisis):
+        for j in range(0, dim_analisis - i - 1):
             if autovalores[idx_ordenados[j]] < autovalores[idx_ordenados[j + 1]]:
-                # Intercambiar índices
                 temp = idx_ordenados[j]
                 idx_ordenados[j] = idx_ordenados[j + 1]
                 idx_ordenados[j + 1] = temp
                 
-    # Reordenar autovalores y autovectores según los índices
-    autovalores_ord = np.zeros(n)
-    autovectores_ord = np.zeros((n, n))
+    autovalores_ord = np.zeros(dim_analisis)
+    autovectores_ord = np.zeros((dim_analisis, dim_analisis))
     
-    for col_idx in range(n):
+    for col_idx in range(dim_analisis):
         original_col = idx_ordenados[col_idx]
         autovalores_ord[col_idx] = autovalores[original_col]
-        for row_idx in range(n):
+        for row_idx in range(dim_analisis):
             autovectores_ord[row_idx, col_idx] = autovectores[row_idx, original_col]
             
-    # Calcular los valores singulares (y forzamos a 0 los negativos por ruido numérico)
-    valores_singulares = np.zeros(n)
+    valores_singulares = np.zeros(dim_analisis)
     r = 0
-    for i in range(n):
+    
+    # Tolerancia efectiva robusta para filtrar ruido numérico flotante acumulado en diagRH
+    max_sv = autovalores_ord[0] ** 0.5 if autovalores_ord[0] > 0.0 else 0.0
+    tol_eff = tol
+    umbral_ruido = max_sv * 1e-5
+    if umbral_ruido > tol:
+        tol_eff = umbral_ruido
+
+    for i in range(dim_analisis):
         val = autovalores_ord[i]
         if val < 0.0:
             val = 0.0
         val_sing = val ** 0.5
         valores_singulares[i] = val_sing
-        if val_sing > tol:
+        if val_sing > tol_eff:
             r += 1
             
-    # Computar B = A * V
-    B = arroba(A, autovectores_ord)
-    
     if transpuesta:
-        # Si traspusimos, lo que calculamos como V es en realidad U
+        # Si m < n, autovectores_ord es U (m x m). 
+        # Calculamos B = A^T * U (que es V * Sig, de n x m).
+        B = arroba(traspuesta(A), autovectores_ord)
         return B, valores_singulares, autovectores_ord, r, True
     else:
+        # Caso normal: m >= n, autovectores_ord es V (n x n).
+        # Calculamos B = A * V (m x n).
+        B = arroba(A, autovectores_ord)
         return autovectores_ord, valores_singulares, B, r, False
 
 
-def svdreducida(A, k="max", tol=1e-15):
+def svd_reducida(A, k="max", tol=1e-15):
     '''
-    Retorna hatU (matriz de m x k), hatSig (vector de k) y hatV (matriz de n x k).
+    Retorna hatU (matriz de m x k), hatSig (vector de k valores singulares) y hatV (matriz de n x k).
     '''
     m, n = A.shape
     res1, valores_singulares, res3, r, transpuesta = _calcular_bases_svd(A, tol)
     
-    # Determinar la cantidad efectiva de valores singulares a retener (k_eff)
     if k == "max":
         k_eff = r
-        if k_eff == 0:  # Si la matriz es nula, al menos devuelve rango 1 con ceros.
+        if k_eff == 0:
             k_eff = 1
     else:
         k_int = int(k)
@@ -780,7 +787,6 @@ def svdreducida(A, k="max", tol=1e-15):
         if k_eff > len(valores_singulares):
             k_eff = len(valores_singulares)
             
-    # Recortar el vector de valores singulares
     hatSig = np.zeros(k_eff)
     for i in range(k_eff):
         hatSig[i] = valores_singulares[i]
@@ -788,35 +794,40 @@ def svdreducida(A, k="max", tol=1e-15):
     hatU = np.zeros((m, k_eff))
     hatV = np.zeros((n, k_eff))
     
+    max_sv = valores_singulares[0] if len(valores_singulares) > 0 else 0.0
+    tol_eff = tol
+    umbral_ruido = max_sv * 1e-5
+    if umbral_ruido > tol:
+        tol_eff = umbral_ruido
+    
     if not transpuesta:
         V = res1
         U_sig = res3 # Esto es B = A * V
         
-        # hatV son las primeras k_eff columnas de V
         for i in range(n):
             for j in range(k_eff):
                 hatV[i, j] = V[i, j]
                 
-        # hatU se obtiene dividiendo las columnas de B por el valor singular correspondiente
         for j in range(k_eff):
-            if hatSig[j] > tol:
+            if hatSig[j] > tol_eff:
                 for i in range(m):
                     hatU[i, j] = U_sig[i, j] / hatSig[j]
             else:
                 for i in range(m):
                     hatU[i, j] = 0.0
     else:
-        V_sig = res1 # Esto es B = A^T * U
+        # Si transpuesta = True:
+        # res1 es B (V * Sig, de n x k_eff)
+        # res3 es U (de m x k_eff)
+        V_sig = res1
         U = res3
         
-        # hatU son las primeras k_eff columnas de U
         for i in range(m):
             for j in range(k_eff):
                 hatU[i, j] = U[i, j]
                 
-        # hatV se obtiene dividiendo las columnas de B por el valor singular correspondiente
         for j in range(k_eff):
-            if hatSig[j] > tol:
+            if hatSig[j] > tol_eff:
                 for i in range(n):
                     hatV[i, j] = V_sig[i, j] / hatSig[j]
             else:
