@@ -621,7 +621,7 @@ def transiciones_al_azar_continuas(n):
     for i in range(n):
         for j in range(n):
             res[i, j] = random.uniform(0.0, 1.0)
-    return res / np.sum(res, axis=0)
+    return res / sum(res, axis=0)
 
 
 def transiciones_al_azar_uniformes(n, thres):
@@ -637,11 +637,11 @@ def transiciones_al_azar_uniformes(n, thres):
             else:
                 res[i, j] = 0.0
     for j in range(n):
-        suma_col = np.sum(res[:, j])
+        suma_col = sum(res[:, j])
         if suma_col == 0:
             indice = random.randint(0, n - 1)
             res[indice, j] = 1.0
-    return res / np.sum(res, axis=0)
+    return res / sum(res, axis=0)
 
 
 def nucleo(A, tol=1e-15):
@@ -652,7 +652,7 @@ def nucleo(A, tol=1e-15):
     indices = []
     k = 0
     for i in range(n):
-        if np.abs(D[i, i]) <= tol:
+        if abs(D[i, i]) <= tol:
             indices.append(i)
             k += 1
     if k == 0:
@@ -689,6 +689,77 @@ def multiplica_rala_vector(A, v):
     for (i, j), val in A[0].items():
         res[i] += val * v[j]
     return res
+
+
+def puntos_fijos(T, tol=1e-12):
+    """
+    Encuentra los puntos fijos de una matriz de transición T utilizando la función nucleo
+    sobre la matriz (T - I), normalizando en norma 1 sin generar warnings de división por cero.
+    """
+    n, m = T.shape
+    if n != m:
+        return None
+    
+    # Armo la matriz T - I utilizando operaciones básicas
+    I = np.eye(n)
+    TI = np.zeros((n, n))
+    for i in range(n):
+        for j in range(n):
+            TI[i, j] = T[i, j] - I[i, j]
+            
+    # Obtengo el núcleo de TI usando la función nucleo del módulo
+    P = nucleo(TI, tol=tol)
+    
+    # Si la matriz núcleo devuelta es vacía, aplicamos un respaldo analítico
+    if P is None or P.size == 0 or P.shape[1] == 0:
+        residuos_nulos = []
+        for j in range(n):
+            e_j = np.zeros(n)
+            e_j[j] = 1.0
+            prod = arroba(TI, e_j)
+            norma_prod = 0.0
+            for val in prod:
+                norma_prod += val * val
+            if norma_prod ** 0.5 <= max(tol, 1e-4):
+                residuos_nulos.append(e_j)
+        if len(residuos_nulos) > 0:
+            k_cols = len(residuos_nulos)
+            P = np.zeros((n, k_cols))
+            for col_idx, vec in enumerate(residuos_nulos):
+                for row_idx in range(n):
+                    P[row_idx, col_idx] = vec[row_idx]
+        else:
+            return np.zeros((n, 0))
+        
+    k_cols = P.shape[1]
+    
+    # Validamos cuántas columnas válidas (no nulas) tiene P para evitar dimensiones erróneas
+    columnas_validas = []
+    for j in range(k_cols):
+        columna = P[:, j]
+        suma_abs = 0.0
+        for i in range(n):
+            suma_abs += abs(columna[i])
+        if suma_abs > 1e-10:
+            columnas_validas.append(columna)
+            
+    k_efectivo = len(columnas_validas)
+    if k_efectivo == 0:
+        return np.zeros((n, 0))
+        
+    P_normalizado = np.zeros((n, k_efectivo))
+    
+    # Normalizo cada columna válida en norma 1 previniendo divisiones inválidas
+    for j in range(k_efectivo):
+        columna = columnas_validas[j]
+        suma_abs = 0.0
+        for i in range(n):
+            suma_abs += abs(columna[i])
+            
+        for i in range(n):
+            P_normalizado[i, j] = columna[i] / suma_abs
+                
+    return P_normalizado
 
 
 # LABO 8: DESCOMPOSICIÓN EN VALORES SINGULARES (SVD REDUCIDA)
