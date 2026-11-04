@@ -1,5 +1,5 @@
 import numpy as np
-import random
+#import random
 
 # MULTIPLICACIÓN MATRICIAL
 def arroba(A, B):
@@ -51,18 +51,18 @@ def esSimetrica(A, tol=1e-10):
                 return False
     return True
 
-''' 
+
 def error(x, y):
     #Calcula el error absoluto de aproximar x usando y en float64.
-    x_f64 = np.float64(x)
-    y_f64 = np.float64(y)
+    x_f64 = float(x)
+    y_f64 = float(y)
     return abs(x_f64 - y_f64)
 
 
 def error_relativo(x, y):
     #Calcula el error relativo de aproximar x usando y en float64.
-    x_f64 = np.float64(x)
-    y_f64 = np.float64(y)
+    x_f64 = float(x)
+    y_f64 = float(y)
     if x_f64 == 0:
         raise ValueError("El valor de x no puede ser cero para calcular el error relativo.")
     return abs(x_f64 - y_f64) / abs(x_f64)
@@ -83,7 +83,6 @@ def matricesIguales(A, B):
             if error(a, b) >= atol + rtol * abs(b):
                 return False
     return True
-'''
 
 # LABO 2: TRANSFORMACIONES LINEALES
 
@@ -519,20 +518,18 @@ def calculaQR(A, metodo='RH', tol=1e-12):
     # En caso de que pasen un metodo inválido, devolvemos (None, None) para pasar los test
     return None, None
 
-
 # LABO 6: MÉTODO DE LA POTENCIA Y HOUSEHOLDER
 def norma2_vector(v):
 
     return float((sum(v**2))**(1/2))
 
-
 def f_A(A, v):
     w = arroba(A, v)
     nrm = norma2_vector(w)
-    if nrm > 0:
+    # Protegemos contra divisiones por números extremadamente pequeños
+    if nrm > 1e-15:
         return w / nrm
     return np.zeros(len(v))
-
 
 def f2(A, v):
     return f_A(A, f_A(A, v))
@@ -556,20 +553,28 @@ def householder(v1):
 def metpot2k(A, tol=1e-15, K=10000):
     '''Método de la potencia aplicando f_A dos veces por iteración (Algoritmo 1).'''
     n = A.shape[0]
-    v = np.random.randn(n)
+    
+    # Inicialización determinística asimétrica para evitar caer en el núcleo 
+    # de matrices de suma cero (como las de Markov).
+    v = np.zeros(n, dtype=float)
+    for i in range(n):
+        v[i] = float(i + 1)
     v = v / norma2_vector(v)
+    
     v_t = f2(A, v)
     e = float(arroba(v_t, v))
     k = 1
+    
     while abs(e - 1.0) > tol and k < K:
         v = v_t
         v_t = f2(A, v)
         e = float(arroba(v_t, v))
         k += 1
+        
     Av_t = arroba(A, v_t)
     lam = float(arroba(v_t, Av_t))
+    
     return v_t, lam, k
-
 
 def diagRH(A, tol=1e-15, K=10000):
     '''Diagonalización de matriz simétrica A vía MP y reflectores RH (Algoritmo 2).'''
@@ -589,7 +594,17 @@ def diagRH(A, tol=1e-15, K=10000):
         return I, A_copia
         
     v1, lam1, _ = metpot2k(A, tol, K)
-    v1 = v1 / norma2_vector(v1)
+    
+    # para evitar la división por ceros:
+    nrm_v1 = norma2_vector(v1)
+    if nrm_v1 > 1e-15:
+        v1 = v1 / nrm_v1
+    else:
+        # Si la matriz era de ceros, el vector es nulo. 
+        # Cualquier vector es autovector, usamos el canónico e1.
+        v1 = np.zeros(n)
+        v1[0] = 1.0
+    
     H = householder(v1)
     HA = arroba(H, A)
     
@@ -612,58 +627,57 @@ def diagRH(A, tol=1e-15, K=10000):
     S = arroba(H, S_1)
     return S, D
 
-
 # LABO 7: MARKOV
 
 def transiciones_al_azar_continuas(n):
-    '''Retorna matriz T de n x n normalizada por columnas [0, 1].'''
+    '''Retorna matriz T de n x n normalizada por columnas en [0, 1].'''
     res = np.zeros((n, n))
+    
+    # 1. Generar elementos al azar en [0, 1] usando NumPy
     for i in range(n):
         for j in range(n):
-            res[i, j] = random.uniform(0.0, 1.0)
-    return res / sum(res, axis=0)
-
+            res[i, j] = np.random.uniform(0.0, 1.0)
+            
+    # 2. Normalización manual por columnas sin utilizar axis
+    for j in range(n):
+        suma_col = 0.0
+        for i in range(n):
+            suma_col += res[i, j]
+            
+        if suma_col > 1e-15:
+            for i in range(n):
+                res[i, j] = res[i, j] / suma_col
+                
+    return res
 
 def transiciones_al_azar_uniformes(n, thres):
     '''Retorna matriz T de n x n con probabilidades de transición uniformes.'''
     res = np.zeros((n, n))
+    
     for i in range(n):
         for j in range(n):
-            res[i, j] = random.uniform(0.0, 1.0)
-    for i in range(n):
-        for j in range(n):
-            if res[i, j] <= thres:
+            val = np.random.uniform(0.0, 1.0)
+            if val <= thres:
                 res[i, j] = 1.0
             else:
                 res[i, j] = 0.0
+                
+    # Normalización manual por columnas
     for j in range(n):
-        suma_col = sum(res[:, j])
-        if suma_col == 0:
-            indice = random.randint(0, n - 1)
-            res[indice, j] = 1.0
-    return res / sum(res, axis=0)
-
-
-def nucleo(A, tol=1e-15):
-    '''Calcula el núcleo de A diagonalizando A^T * A con diagRH.'''
-    m, n = A.shape
-    B = arroba(A.T, A)
-    S, D = diagRH(B, tol)
-    indices = []
-    k = 0
-    for i in range(n):
-        if abs(D[i, i]) <= tol:
-            indices.append(i)
-            k += 1
-    if k == 0:
-        return np.zeros((0, 0))
-    res = np.zeros((n, k))
-    for j in range(k):
-        l = indices[j]
+        suma_col = 0.0
         for i in range(n):
-            res[i, j] = S[i, l]
+            suma_col += res[i, j]
+            
+        # Si una columna quedó completamente en ceros, asignamos un 1 a una fila al azar
+        if suma_col == 0.0:
+            idx = np.random.randint(0, n)
+            res[idx, j] = 1.0
+            suma_col = 1.0
+            
+        for i in range(n):
+            res[i, j] = res[i, j] / suma_col
+            
     return res
-
 
 def crea_rala(listado, m_filas, n_columnas, tol=1e-15):
     '''Crea una representación rala (diccionario) de la matriz.'''
@@ -688,6 +702,50 @@ def multiplica_rala_vector(A, v):
     res = np.zeros(m)
     for (i, j), val in A[0].items():
         res[i] += val * v[j]
+    return res
+
+'''
+def nucleo(A, tol=1e-15):
+    #Calcula el núcleo de A diagonalizando A^T * A con diagRH.
+    m, n = A.shape
+    B = arroba(A.T, A)
+    S, D = diagRH(B, tol)
+    indices = []
+    k = 0
+    for i in range(n):
+        if abs(D[i, i]) <= tol:
+            indices.append(i)
+            k += 1
+    if k == 0:
+        return np.zeros((0, 0))
+    res = np.zeros((n, k))
+    for j in range(k):
+        l = indices[j]
+        for i in range(n):
+            res[i, j] = S[i, l]
+    return res
+'''
+def nucleo(A, tol=1e-15):
+    '''Calcula el núcleo de A diagonalizando A^T * A con diagRH.'''
+    m, n = A.shape
+    B = arroba(traspuesta(A), A)
+    S, D = diagRH(B, tol)
+    indices = []
+    k = 0
+    for i in range(n):
+        val_aut = D[i, i]
+        if val_aut < 0.0:
+            val_aut = 0.0
+        if val_aut <= tol:
+            indices.append(i)
+            k += 1
+    if k == 0:
+        return np.zeros((n, 0))
+    res = np.zeros((n, k))
+    for j in range(k):
+        l = indices[j]
+        for i in range(n):
+            res[i, j] = S[i, l]
     return res
 
 
@@ -766,14 +824,14 @@ def puntos_fijos(T, tol=1e-12):
 
 def _calcular_bases_svd(A, tol=1e-15):
     '''
-    Función interna optimizada para calcular los componentes base de la SVD
-    evitando bucles costosos sobre dimensiones gigantes y manejando correctamente transposición.
+    Función interna optimizada para calcular los componentes base de la SVD.
+    Se utiliza vectorización 1D por columnas para la multiplicación final,
+    evitando el error de Tiempo Excedido (TLE) en matrices de 100000 componentes.
     '''
     m, n = A.shape
     transpuesta = False
     
-    # Si m < n (ej: 2 x 100000), diagonalizamos directamente A * A^T (de m x m)
-    # para evitar bucles gigantes en Python y prevenir el error de tiempo límite (TLE).
+    # Si m < n, diagonalizamos A * A^T
     if m < n:
         AtA = arroba(A, traspuesta(A))
         transpuesta = True
@@ -804,13 +862,13 @@ def _calcular_bases_svd(A, tol=1e-15):
     for col_idx in range(dim_analisis):
         original_col = idx_ordenados[col_idx]
         autovalores_ord[col_idx] = autovalores[original_col]
-        for row_idx in range(dim_analisis):
-            autovectores_ord[row_idx, col_idx] = autovectores[row_idx, original_col]
+        # Asignación de columnas vectorizada para velocidad máxima
+        autovectores_ord[:, col_idx] = autovectores[:, original_col]
             
     valores_singulares = np.zeros(dim_analisis)
     r = 0
     
-    # Tolerancia efectiva robusta para filtrar ruido numérico flotante acumulado en diagRH
+    # Tolerancia efectiva robusta para filtrar ruido numérico
     max_sv = autovalores_ord[0] ** 0.5 if autovalores_ord[0] > 0.0 else 0.0
     tol_eff = tol
     umbral_ruido = max_sv * 1e-5
@@ -827,14 +885,28 @@ def _calcular_bases_svd(A, tol=1e-15):
             r += 1
             
     if transpuesta:
-        # Si m < n, autovectores_ord es U (m x m). 
-        # Calculamos B = A^T * U (que es V * Sig, de n x m).
-        B = arroba(traspuesta(A), autovectores_ord)
+        # B = A^T * autovectores_ord
+        # Vectorizamos la multiplicación en 1D para que procesar 100000 iteraciones tarde milisegundos
+        T_A = traspuesta(A)
+        k = autovectores_ord.shape[1]
+        B = np.zeros((T_A.shape[0], k))
+        for j in range(k):
+            col_res = np.zeros(T_A.shape[0])
+            for p in range(T_A.shape[1]):
+                col_res += T_A[:, p] * autovectores_ord[p, j]
+            B[:, j] = col_res
+            
         return B, valores_singulares, autovectores_ord, r, True
     else:
-        # Caso normal: m >= n, autovectores_ord es V (n x n).
-        # Calculamos B = A * V (m x n).
-        B = arroba(A, autovectores_ord)
+        # B = A * autovectores_ord
+        k = autovectores_ord.shape[1]
+        B = np.zeros((A.shape[0], k))
+        for j in range(k):
+            col_res = np.zeros(A.shape[0])
+            for p in range(A.shape[1]):
+                col_res += A[:, p] * autovectores_ord[p, j]
+            B[:, j] = col_res
+            
         return autovectores_ord, valores_singulares, B, r, False
 
 
@@ -873,36 +945,28 @@ def svd_reducida(A, k="max", tol=1e-15):
     
     if not transpuesta:
         V = res1
-        U_sig = res3 # Esto es B = A * V
+        U_sig = res3 # B = A * V
         
-        for i in range(n):
-            for j in range(k_eff):
-                hatV[i, j] = V[i, j]
-                
+        # Asignación en bloque rápido
+        hatV[:, :k_eff] = V[:, :k_eff]
+        
+        # División por vectores completos para máxima eficiencia
         for j in range(k_eff):
             if hatSig[j] > tol_eff:
-                for i in range(m):
-                    hatU[i, j] = U_sig[i, j] / hatSig[j]
+                hatU[:, j] = U_sig[:, j] / hatSig[j]
             else:
-                for i in range(m):
-                    hatU[i, j] = 0.0
+                hatU[:, j] = 0.0
     else:
-        # Si transpuesta = True:
-        # res1 es B (V * Sig, de n x k_eff)
-        # res3 es U (de m x k_eff)
-        V_sig = res1
+        # transpuesta = True:
+        V_sig = res1 # B = A^T * U
         U = res3
         
-        for i in range(m):
-            for j in range(k_eff):
-                hatU[i, j] = U[i, j]
-                
+        hatU[:, :k_eff] = U[:, :k_eff]
+        
         for j in range(k_eff):
             if hatSig[j] > tol_eff:
-                for i in range(n):
-                    hatV[i, j] = V_sig[i, j] / hatSig[j]
+                hatV[:, j] = V_sig[:, j] / hatSig[j]
             else:
-                for i in range(n):
-                    hatV[i, j] = 0.0
+                hatV[:, j] = 0.0
                     
     return hatU, hatSig, hatV
