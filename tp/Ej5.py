@@ -67,7 +67,7 @@ def obtenerQ3d(imgPts, objPts):
     return Q
 
 
-def resolverDLT3D(Q):
+def resolverDLT3DconSVD(Q):
     '''
     Resuelve el sistema de calibracion 3D DLT mediante svd_reducida del modulo ALC.
     Reconstruye y retorna la matriz de proyeccion M de 3 x 4.
@@ -210,7 +210,7 @@ def estimarPoseYReproyectar(file_pts, K, img_path):
     Q = obtenerQ3d(imgPts, objPts)
     
     # M = resolverDLT3D(Q) - Reconstruccion 3x4 mediante svd_reducida
-    M = resolverDLT3D(Q)
+    M = resolverDLT3DconSVD(Q)
     
     K_inv = alc.inversa(K)
     R_raw = alc.arroba(K_inv, M[0:3, 0:3])
@@ -365,7 +365,7 @@ if __name__ == '__main__':
     obj_pts = data_pts[1:4, :].T
     img_pts = data_pts[4:6, :].T
     Q_calle = obtenerQ3d(img_pts, obj_pts)
-    M_calle = resolverDLT3D(Q_calle)
+    M_calle = resolverDLT3DconSVD(Q_calle)
     H_calle = M_calle[:, [0, 1, 3]]
     
     # DEFINICION DE PUNTOS 2D DE SEGUIMIENTO TEMPORAL DE AGENTES (5.c)
