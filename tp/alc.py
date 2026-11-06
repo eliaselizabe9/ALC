@@ -613,6 +613,7 @@ def diagRH(A, tol=1e-15, K=10000):
     HA = arroba(H, A)
     
     B = arroba(HA, traspuesta(H))
+    B = 0.5 * (B + traspuesta(B)) # Cancelado de error residual de redondeo de float ~ 10^-7
     
     if n == 2:
         return H, B
