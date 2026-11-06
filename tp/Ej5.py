@@ -1,9 +1,3 @@
-'''
-Ejercicio 5: Cruzando en rojo - Calculo de velocidad
-Implementacion de calibracion intrinseca, estimacion de pose y reproyeccion,
-y calculo de velocidades de agentes dinamicos sobre la calzada.
-'''
-
 import os
 import numpy as np
 import pandas as pd
@@ -30,10 +24,8 @@ def extraerTiempoMs(nombreArchivo):
     return 0.0
 
 
-# =========================================================================
-# MARCA 5: PROYECCION INVERSA 2D IMAGEN -> 3D PLANO PISO (H_inv * m)
+# PROYECCION INVERSA 2D IMAGEN -> 3D PLANO PISO (H_inv * m)
 # Transforma un punto en pixeles [u, v, 1] al suelo metrico [X, Y] en metros
-# =========================================================================
 
 def proyectarPuntoImagenAPiso(m, H_inv):
     '''
