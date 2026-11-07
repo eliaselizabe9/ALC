@@ -20,6 +20,7 @@ import numpy as np
 import scipy.linalg
 import pandas as pd
 import matplotlib.pyplot as plt
+from pprint import pformat
 
 
 # =============================================================================
@@ -260,6 +261,10 @@ def visualizarTrackingAgentesCV2(captura_path, tracking_agentes, tabla_velocidad
       - Posiciones actuales con marcadores circulares y bounding labels.
       - Velocidades instantaneas estimadas y estadisticas visuales de telemetria.
     '''
+
+    coords_polylines = {}
+    coords_polylines_int = {}
+
     if not os.path.exists(captura_path):
         return
         
@@ -280,6 +285,10 @@ def visualizarTrackingAgentesCV2(captura_path, tracking_agentes, tabla_velocidad
     for agente, registros in tracking_agentes.items():
         pts = np.array(registros, dtype=np.int32).reshape((-1, 1, 2))
         color = colores_bgr.get(agente, (255, 255, 255))
+        
+        coords_polylines[agente] = [(round(float(u), 1), round(float(v), 1)) for u, v in registros]
+        coords_polylines_int[agente] = [(int(p[0, 0]), int(p[0, 1])) for p in pts]
+
         cv2.polylines(overlay, [pts], isClosed=False, color=color, thickness=3, lineType=cv2.LINE_AA)
         
         # Marcar posicion inicial (circulo blanco)
@@ -329,11 +338,13 @@ def visualizarTrackingAgentesCV2(captura_path, tracking_agentes, tabla_velocidad
             offset_x += 320
             
     cv2.imwrite(out_plot, im_final)
+    return coords_polylines, coords_polylines_int          # <-- este es el que suele faltar
 
 
 def estimarVelocidadAgentes(secuencia_capturas, H_calle, tracking_agentes,
                            out_plot_curvas="velocidades_referencia.png",
-                           out_plot_cv2="tracking_agentes_cv2.png"):
+                           out_plot_cv2="tracking_agentes_cv2.png",
+                           devolver_coords=False):
     '''
     Proyecta las posiciones 2D medidas de los agentes al plano del suelo metrico
     utilizando H_inv = inv(H_calle) mediante cv2.perspectiveTransform.
@@ -380,6 +391,8 @@ def estimarVelocidadAgentes(secuencia_capturas, H_calle, tracking_agentes,
     if secuencia_capturas:
         captura_referencia = secuencia_capturas[-1]  # Ultimo fotograma con las trayectorias completas
         visualizarTrackingAgentesCV2(captura_referencia, tracking_agentes, tabla_velocidades, out_plot_cv2)
+        coords_poly, _ = visualizarTrackingAgentesCV2(captura_referencia, tracking_agentes,
+                                                      tabla_velocidades, out_plot_cv2)
         
     # Graficar curvas de evolucion temporal con Matplotlib
     plt.figure(figsize=(10, 6))
@@ -404,8 +417,42 @@ def estimarVelocidadAgentes(secuencia_capturas, H_calle, tracking_agentes,
     plt.tight_layout()
     plt.savefig(out_plot_curvas)
     plt.close()
+
+    if devolver_coords:
+        return tabla_velocidades, coords_poly
     
     return tabla_velocidades
+
+def exportarTrackingCSV(capturas, tracking_agentes, H_calle=None, out_csv='tracking_agentes.csv'):
+    """
+    Guarda una fila por (agente, frame) con su archivo, tiempo y coordenadas (u, v) en píxeles.
+    Si se pasa H_calle, agrega también X, Y en metros sobre la calzada.
+    """
+    t = [extraerTiempoMs(c) for c in capturas]
+    t0 = t[0]
+    H_inv = scipy.linalg.inv(H_calle) if H_calle is not None else None
+
+    filas = []
+    for ag, registros in tracking_agentes.items():
+        for k, (u, v) in enumerate(registros):
+            fila = {
+                'agente': ag,
+                'frame': k,
+                'archivo': os.path.basename(capturas[k]),
+                't_s': t[k],
+                't_rel_s': round(t[k] - t0, 3),
+                'u_px': u,
+                'v_px': v,
+            }
+            if H_inv is not None:
+                p = H_inv @ np.array([u, v, 1.0])
+                fila['X_m'] = round(float(p[0] / p[2]), 4)
+                fila['Y_m'] = round(float(p[1] / p[2]), 4)
+            filas.append(fila)
+
+    df = pd.DataFrame(filas)
+    df.to_csv(out_csv, index=False)
+    return df
 
 
 # =============================================================================
@@ -484,11 +531,18 @@ if __name__ == '__main__':
         'Camioneta': cam_uv
     }
     
-    tabla_ref = estimarVelocidadAgentes(capturas, H_calle, tracking_agentes,
+    tabla_ref, coords_poly = estimarVelocidadAgentes(capturas, H_calle, tracking_agentes,
                                        out_plot_curvas="velocidades_referencia.png",
-                                       out_plot_cv2="tracking_agentes_cv2.png")
+                                       out_plot_cv2="tracking_agentes_cv2.png",
+                                       devolver_coords=True)
+    
+    print('tracking_agentes =', pformat(coords_poly, width=90, compact=True))
     df_ref = pd.DataFrame(tabla_ref)
     
+    df_tracking = exportarTrackingCSV(capturas, tracking_agentes, H_calle, 'tracking_agentes.csv')
+    print(df_tracking.head())
+    df_tracking = exportarTrackingCSV(capturas, coords_poly, H_calle, 'tracking_agentes.csv')
+
     # Imprimir resumen de velocidades y distancias totales recorridas
     print('RESUMEN DE MEDICIONES:')
     for ag in ['Peatona', 'Taxi', 'Camioneta']:
