@@ -23,27 +23,30 @@ def extraerTiempoMs(nombreArchivo):
         return horas * 3600.0 + minutos * 60.0 + segundos + (milisegundos / 1000.0)
     return 0.0
 
+def normalizar_2d(pts):
+    pts = np.asarray(pts, dtype=float)
+    cx, cy = np.mean(pts[:,0]), np.mean(pts[:,1])
+    dist = np.sqrt((pts[:,0]-cx)**2 + (pts[:,1]-cy)**2)
+    s = np.sqrt(2.0) / (np.mean(dist) if np.mean(dist) > 0 else 1.0)
+    T = np.array([[s, 0.0, -s*cx], [0.0, s, -s*cy], [0.0, 0.0, 1.0]])
+    pts_norm = np.zeros_like(pts)
+    for i in range(len(pts)):
+        pts_norm[i, 0] = s * (pts[i, 0] - cx)
+        pts_norm[i, 1] = s * (pts[i, 1] - cy)
+    return pts_norm, T
 
-# PROYECCION INVERSA 2D IMAGEN -> 3D PLANO PISO (H_inv * m)
-# Transforma un punto en pixeles [u, v, 1] al suelo metrico [X, Y] en metros
-
-def proyectarPuntoImagenAPiso(m, H_inv):
-    '''
-    Toma las coordenadas homogeneas de un punto medido en la imagen:
-        m = [u_k, v_k, 1.0]
-    Y aplica la transformacion de homografia inversa del plano calle:
-        P_homog = H_inv * m
-    Normaliza por la tercera componente para obtener coordenadas metricas en metros:
-        X = P_homog[0] / P_homog[2]
-        Y = P_homog[1] / P_homog[2]
-    '''
-    P_homog = alc.arroba(H_inv, m)
-    
-    # Normalizacion
-    if abs(P_homog[2]) > 1e-15:
-        return np.array([P_homog[0] / P_homog[2], P_homog[1] / P_homog[2]])
-    return np.array([P_homog[0], P_homog[1]])
-
+def normalizar_3d(pts):
+    pts = np.asarray(pts, dtype=float)
+    cx, cy, cz = np.mean(pts[:,0]), np.mean(pts[:,1]), np.mean(pts[:,2])
+    dist = np.sqrt((pts[:,0]-cx)**2 + (pts[:,1]-cy)**2 + (pts[:,2]-cz)**2)
+    s = np.sqrt(3.0) / (np.mean(dist) if np.mean(dist) > 0 else 1.0)
+    T = np.array([[s, 0.0, 0.0, -s*cx], [0.0, s, 0.0, -s*cy], [0.0, 0.0, s, -s*cz], [0.0, 0.0, 0.0, 1.0]])
+    pts_norm = np.zeros_like(pts)
+    for i in range(len(pts)):
+        pts_norm[i, 0] = s * (pts[i, 0] - cx)
+        pts_norm[i, 1] = s * (pts[i, 1] - cy)
+        pts_norm[i, 2] = s * (pts[i, 2] - cz)
+    return pts_norm, T
 
 def obtenerQ3d(imgPts, objPts):
     '''
@@ -66,6 +69,76 @@ def obtenerQ3d(imgPts, objPts):
         Q[2 * i + 1, 8:12] = -v * P_i
     return Q
 
+def resolverDLT3D_Hartley(imgPts, objPts):
+    '''Aplica Hartley, arma Q, resuelve de forma segura y desnormaliza M.'''
+    imgPts_norm, T_2d = normalizar_2d(imgPts)
+    objPts_norm, T_3d = normalizar_3d(objPts)
+    
+    Q_norm = obtenerQ3d(imgPts_norm, objPts_norm)
+    QtQ = alc.arroba(Q_norm.T, Q_norm)
+    S, D = alc.diagRH(QtQ, tol=1e-15, K=10000)
+    
+    idx_min = 0
+    min_val = abs(D[0, 0])
+    for i in range(1, 12):
+        if abs(D[i, i]) < min_val:
+            min_val = abs(D[i, i])
+            idx_min = i
+            
+    m_norm = S[:, idx_min]
+    m_norm = m_norm / alc.norma(m_norm, 2)
+    M_norm = m_norm.reshape((3, 4))
+    
+    T_2d_inv = alc.inversa(T_2d)
+    M = alc.arroba(T_2d_inv, alc.arroba(M_norm, T_3d))
+    return M
+
+# PROYECCION INVERSA 2D IMAGEN -> 3D PLANO PISO (H_inv * m)
+# Transforma un punto en pixeles [u, v, 1] al suelo metrico [X, Y] en metros
+
+def proyectarPuntoImagenAPiso(m, H_inv):
+    '''
+    Toma las coordenadas homogeneas de un punto medido en la imagen:
+        m = [u_k, v_k, 1.0]
+    Y aplica la transformacion de homografia inversa del plano calle:
+        P_homog = H_inv * m
+    Normaliza por la tercera componente para obtener coordenadas metricas en metros:
+        X = P_homog[0] / P_homog[2]
+        Y = P_homog[1] / P_homog[2]
+    '''
+    P_homog = alc.arroba(H_inv, m)
+    
+    # Normalizacion
+    if abs(P_homog[2]) > 1e-15:
+        return np.array([P_homog[0] / P_homog[2], P_homog[1] / P_homog[2]])
+    return np.array([P_homog[0], P_homog[1]])
+
+
+def resolverDLT3D_Definitivo(imgPts, objPts):
+    # 1. Normalizamos
+    imgPts_norm, T_2d = normalizar_2d(imgPts)
+    objPts_norm, T_3d = normalizar_3d(objPts)
+    
+    # 2. Matriz Q estable
+    Q_norm = obtenerQ3d(imgPts_norm, objPts_norm)
+    
+    # 3. Extraemos V completa desde el motor interno para evitar recortes
+    V = alc._calcular_bases_svd(Q_norm, tol=1e-15)[0]
+    
+    # 4. Filtro del grupo para evadir el plano Z=0 (evita el ZeroDivisionError)
+    m_norm = V[:, -1]
+    for col in range(V.shape[1] - 1, -1, -1):
+        v = V[:, col]
+        if abs(v[0]) > 1e-6 or abs(v[1]) > 1e-6 or abs(v[3]) > 1e-6:
+            m_norm = v
+            break
+            
+    M_norm = m_norm.reshape((3, 4))
+    
+    # 5. Desnormalizamos: M = T_2d_inv * M_norm * T_3d
+    T_2d_inv = alc.inversa(T_2d)
+    M = alc.arroba(T_2d_inv, alc.arroba(M_norm, T_3d))
+    return M
 
 def resolverDLT3DconSVD(Q):
     '''
@@ -151,15 +224,10 @@ def graficarVelocidades(tablaVelocidades, outPath="velocidades_agentes.png"):
 
 
 # Punto a: Calcular Intrínsecos Salgero
-
+"""
 def calcularIntrinsecosSalguero(world_img_pts_csv):
-    '''
-    Calcula los parametros intrinsecos K de la camara promediando las estimaciones
-    obtenidas a partir de diferentes vistas de la esquina en world_img_pts_csv.
-    '''
     df = pd.read_csv(world_img_pts_csv, sep=';')
     objPts = df[['X', 'Y', 'Z']].values
-    
     K_acum = np.zeros((3, 3))
     
     columnas = list(df.columns)
@@ -168,83 +236,154 @@ def calcularIntrinsecosSalguero(world_img_pts_csv):
     
     for k in range(num_vistas):
         imgPts_k = df[[f'u_{k}', f'v_{k}']].values
-        Q_k = obtenerQ3d(imgPts_k, objPts)
-        U_hat, Sig_hat, V_hat = alc.svd_reducida(Q_k, k=12, tol=1e-15)
         
-        # m_opt = ultima columna de V_hat
-        m_opt = V_hat[:, -1]
-        M_k = m_opt.reshape((3, 4))
+        # Obtenemos M directamente con el solucionador estable
+        M_k = resolverDLT3D_Hartley(imgPts_k, objPts)
         
-        # Factorizacion RQ de M_k[0:3, 0:3] mediante QR de su inversa
         M3_inv = alc.inversa(M_k[0:3, 0:3])
         Q_qr, R_qr = alc.calculaQR(M3_inv, metodo='RH', tol=1e-12)
         
         K_k = alc.inversa(R_qr)
-        K_k = K_k / K_k[2, 2] # Normalizacion K_33 = 1.0
+        K_k = K_k / K_k[2, 2] 
         
-        # Ajuste de focos positivos
         for c in range(2):
             if K_k[c, c] < 0.0:
                 K_k[:, c] = -K_k[:, c]
                 
         K_acum = K_acum + K_k
         
-    K_final = K_acum / num_vistas
-    
-    return K_final
+    return K_acum / num_vistas
+"""
 
+def calcularIntrinsecosSalguero(world_img_pts_csv):
+    df = pd.read_csv(world_img_pts_csv, sep=';')
+    objPts = df[['X', 'Y', 'Z']].values
+    K_acum = np.zeros((3, 3))
+    
+    columnas = list(df.columns)
+    vistas = [c.split('_')[1] for c in columnas if c.startswith('u_') and f"v_{c.split('_')[1]}" in columnas]
+    num_vistas = len(vistas)
+    
+    for k in range(num_vistas):
+        imgPts_k = df[[f'u_{k}', f'v_{k}']].values
+        M_k = resolverDLT3D_Definitivo(imgPts_k, objPts)
+        
+        M3_inv = alc.inversa(M_k[0:3, 0:3])
+        Q_qr, R_qr = alc.calculaQR(M3_inv, metodo='RH', tol=1e-12)
+        
+        K_k = alc.inversa(R_qr)
+        K_k = K_k / K_k[2, 2] 
+        
+        for c in range(2):
+            if K_k[c, c] < 0.0:
+                K_k[:, c] = -K_k[:, c]
+                
+        K_acum = K_acum + K_k
+        
+    return K_acum / num_vistas
 
 # Punto b: Estimar Pose y Reproyectar
-
+"""
 def estimarPoseYReproyectar(file_pts, K, img_path):
-    '''
-    Estima la pose de la camara (rotacion rigida Q_r y traslacion t) y calcula
-    el error cuadratico medio de reproyeccion RMS sobre la imagen de referencia.
-    '''
     data = np.loadtxt(file_pts)
-    objPts = data[1:4, :].T  # Matriz de 51 x 3 con [X, Y, Z] de cada punto
-    imgPts = data[4:6, :].T  # Matriz de 51 x 2 con [u, v] medidos en la imagen
+    objPts = data[1:4, :].T
+    imgPts = data[4:6, :].T
     n_pts = objPts.shape[0]
     
-    # Obtenemos la matriz Q mediante obtenerQ3d. Matriz de 102 x 12
-    Q = obtenerQ3d(imgPts, objPts)
-    
-    # M = resolverDLT3D(Q) - Reconstruccion 3x4 mediante svd_reducida
-    M = resolverDLT3DconSVD(Q)
+    # Obtenemos M estable
+    M = resolverDLT3D_Hartley(imgPts, objPts)
     
     K_inv = alc.inversa(K)
     R_raw = alc.arroba(K_inv, M[0:3, 0:3])
     
+    lam = 1.0 / alc.norma(R_raw[:, 0], 2)
     Q_r, R_r = alc.calculaQR(R_raw, metodo='RH')
     
-    t = alc.res_tri(K, M[0:3, 3], inferior=False)
+    t_raw = alc.res_tri(K, M[0:3, 3], inferior=False)
+    t = t_raw * lam
     
+    # Verificar dirección de cámara
+    P_prueba = np.array([objPts[0, 0], objPts[0, 1], objPts[0, 2], 1.0])
+    if alc.arroba(M, P_prueba)[2] < 0:
+        M = -M
+        Q_r = -Q_r
+        t = -t
+        
+    Rt = np.zeros((3, 4))
+    Rt[:, 0:3] = Q_r
+    Rt[:, 3] = t
+    M_fisica = alc.arroba(K, Rt)
+
     suma_err_sq = 0.0
     puntos_reproyectados = np.zeros((n_pts, 2))
     
-    # PROYECCION MATEMATICA 3D -> 2D (M * P_i) Y COORDENADAS REPROYECTADAS
-    # Transforma cada punto homogeneo 3D P_i al plano imagen para obtener (u_hat, v_hat)
     for i in range(n_pts):
-        # Punto 3D
         P_i = np.array([objPts[i, 0], objPts[i, 1], objPts[i, 2], 1.0])
+        m_hat_homog = alc.arroba(M_fisica, P_i)
         
-        # Proyeccion lineal: m_hat_homog = M * P_i (vector de 3 componentes [u_tilde, v_tilde, w_tilde])
-        m_hat_homog = alc.arroba(M, P_i)
+        if abs(m_hat_homog[2]) > 1e-12:
+            u_hat = m_hat_homog[0] / m_hat_homog[2]
+            v_hat = m_hat_homog[1] / m_hat_homog[2]
+        else:
+            u_hat, v_hat = 0.0, 0.0
         
-        # Normalización mediante tilde w para obtener pixeles euclideos
-        u_hat = m_hat_homog[0] / m_hat_homog[2]
-        v_hat = m_hat_homog[1] / m_hat_homog[2]
-        
-        # Guardamos el punto proyectado resultante
         puntos_reproyectados[i, 0] = u_hat
         puntos_reproyectados[i, 1] = v_hat
-        
-        # Acumulacion de la discrepancia cuadratica entre punto medido y punto proyectado
         suma_err_sq += (imgPts[i, 0] - u_hat)**2 + (imgPts[i, 1] - v_hat)**2
         
-    # RMS = RaizCuadrada(suma_err_sq / 51.0)
     RMS = np.sqrt(suma_err_sq / float(n_pts))
+    dibujarPuntosSobreImagen(img_path, imgPts, puntos_reproyectados, RMS)
     
+    return Q_r, t, RMS
+"""
+def estimarPoseYReproyectar(file_pts, K, img_path):
+    data = np.loadtxt(file_pts)
+    objPts = data[1:4, :].T
+    imgPts = data[4:6, :].T
+    n_pts = objPts.shape[0]
+    
+    # Usamos el solucionador maestro
+    M = resolverDLT3D_Definitivo(imgPts, objPts)
+    
+    K_inv = alc.inversa(K)
+    R_raw = alc.arroba(K_inv, M[0:3, 0:3])
+    
+    lam = 1.0 / alc.norma(R_raw[:, 0], 2)
+    Q_r, R_r = alc.calculaQR(R_raw, metodo='RH')
+    
+    t_raw = alc.res_tri(K, M[0:3, 3], inferior=False)
+    t = t_raw * lam
+    
+    # Ajuste físico
+    P_prueba = np.array([objPts[0, 0], objPts[0, 1], objPts[0, 2], 1.0])
+    if alc.arroba(M, P_prueba)[2] < 0:
+        M = -M
+        Q_r = -Q_r
+        t = -t
+        
+    Rt = np.zeros((3, 4))
+    Rt[:, 0:3] = Q_r
+    Rt[:, 3] = t
+    M_fisica = alc.arroba(K, Rt)
+
+    suma_err_sq = 0.0
+    puntos_reproyectados = np.zeros((n_pts, 2))
+    
+    for i in range(n_pts):
+        P_i = np.array([objPts[i, 0], objPts[i, 1], objPts[i, 2], 1.0])
+        m_hat_homog = alc.arroba(M_fisica, P_i)
+        
+        if abs(m_hat_homog[2]) > 1e-12:
+            u_hat = m_hat_homog[0] / m_hat_homog[2]
+            v_hat = m_hat_homog[1] / m_hat_homog[2]
+        else:
+            u_hat, v_hat = 0.0, 0.0
+        
+        puntos_reproyectados[i, 0] = u_hat
+        puntos_reproyectados[i, 1] = v_hat
+        suma_err_sq += (imgPts[i, 0] - u_hat)**2 + (imgPts[i, 1] - v_hat)**2
+        
+    RMS = np.sqrt(suma_err_sq / float(n_pts))
     dibujarPuntosSobreImagen(img_path, imgPts, puntos_reproyectados, RMS)
     
     return Q_r, t, RMS
@@ -342,30 +481,27 @@ if __name__ == '__main__':
     print('EJERCICIO 5.a: CALCULO DE MATRIZ DE INTRINSECOS K')
     print('=' * 65)
     K = calcularIntrinsecosSalguero(world_img_pts_csv)
-    print('Matriz K final estimada:')
-    print(K)
+    print('Matriz K final estimada:\n', K)
     print()
     
     print('=' * 65)
     print('EJERCICIO 5.b: ESTIMACION DE POSE Y REPROYECCION')
     print('=' * 65)
     Q_r, t, RMS = estimarPoseYReproyectar(file_pts, K, img_path)
-    print('Matriz de rotacion Q_r:')
-    print(Q_r)
-    print('Vector de traslacion t:')
-    print(t)
-    print(f'Error RMS de reproyeccion: {RMS:.4f} px')
-    print()
+    print('Matriz de rotacion Q_r:\n', Q_r)
+    print('\nVector de traslacion t:\n', t)
+    print(f'\nError RMS de reproyeccion: {RMS:.4f} px\n')
     
     print('=' * 65)
-    print(f'EJERCICIO 5.c: ESTIMACION DE VELOCIDAD DE AGENTES ({n_frames} CAPTURAS)')
+    print(f'EJERCICIO 5.c: ESTIMACION DE VELOCIDAD DE AGENTES')
     print('=' * 65)
-    # Recuperamos M y la homografia del plano calle Z = 0
+    
     data_pts = np.loadtxt(file_pts)
     obj_pts = data_pts[1:4, :].T
     img_pts = data_pts[4:6, :].T
-    Q_calle = obtenerQ3d(img_pts, obj_pts)
-    M_calle = resolverDLT3DconSVD(Q_calle)
+    
+    # Usamos también el solucionador definitivo para estabilizar la Homografía de la calle
+    M_calle = resolverDLT3D_Definitivo(img_pts, obj_pts)
     H_calle = M_calle[:, [0, 1, 3]]
     
     # DEFINICION DE PUNTOS 2D DE SEGUIMIENTO TEMPORAL DE AGENTES (5.c)
