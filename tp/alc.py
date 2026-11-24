@@ -1055,7 +1055,6 @@ def resolverDLT3D(Q):
     return M
 
 
-from alc import QR_con_HH
 # EJERCICIOS 2.c y 2.d: DESCOMPOSICIÓN DE M EN K, R Y t
 def descomposicion_RQ_3x3(A):
     """
@@ -1923,15 +1922,6 @@ def suavizarTrackingManual(tracking_dict, secuencia_capturas, H_calle, grado=2):
 
 # ==================================
 # Ejercicio 6: POSIT
-
-def productoCruz(a, b):
-    """Producto vectorial de dos vectores de R^3."""
-    c = np.zeros(3)
-    c[0] = a[1] * b[2] - a[2] * b[1]
-    c[1] = a[2] * b[0] - a[0] * b[2]
-    c[2] = a[0] * b[1] - a[1] * b[0]
-    return c
-
 
 def calculoLambdaMu(I0, J0):
     """
