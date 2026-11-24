@@ -1,4 +1,8 @@
+import os
 import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 #import random
 
 # MULTIPLICACIÓN MATRICIAL
@@ -1055,7 +1059,7 @@ from alc import QR_con_HH
 # EJERCICIOS 2.c y 2.d: DESCOMPOSICIÓN DE M EN K, R Y t
 def descomposicion_RQ_3x3(A):
     """
-    Realizo la descomposición RQ de una matriz A de 3x3 mediante la factorización QR de alc.
+    Realizo la descomposición RQ de una matriz A de 3x3 mediante la factorización QR de alc
     Descompongo A en K * R, donde K es triangular superior y R es ortogonal.
     """
     # Defino la matriz de permutación/reversión P de 3x3
@@ -1144,3 +1148,773 @@ def devolverMatricesCalibracion3d(M, fijar_sesgo_cero=False, igualar_focales=Fal
         R = -R
 
     return R, t, K
+
+# FUNCIONES EJERCICIO 3
+
+def obtenerQ2d(imgPts, objPts):
+    """
+    Arma la matriz Q del sistema homogéneo Qh = 0 (ecuación 11) para estimar
+    la homografía H entre puntos coplanares del mundo y puntos de la imagen.
+
+    Parámetros:
+        imgPts: matriz de n x 2 con las coordenadas (u_i, v_i) en píxeles.
+        objPts: matrix de n x 2 (o n x 3) con las coordenadas (U_i, V_i) del
+                plano del objeto (en mm), y W = 0.
+                imgPts[i] y objPts[i] deben corresponder al mismo punto físico.
+
+    Retorna:
+        Q: array de 2n x 9, donde h = (h11, h12, h13, h21, h22, h23, h31, h32, h33)
+           es el vector que debería quedar en el núcleo de Q.
+    """
+    imgPts = np.array(imgPts)
+    objPts = np.array(objPts)
+
+    n = len(objPts)               # cantidad de correspondencias
+    Q = np.zeros((2 * n, 9))      # 2 ecuaciones por punto, 9 incógnitas
+
+    for i in range(n):
+        U, V = objPts[i, 0], objPts[i, 1]   # punto en el plano del tablero
+        u, v = imgPts[i, 0], imgPts[i, 1]   # punto correspondiente en la imagen
+
+        # Fila 2i: ecuación de u  ->  [P^T, 0^T, -u*P^T], con P = (U, V, 1)
+        Q[2 * i, 0:3] = [U, V, 1]
+        Q[2 * i, 6:9] = [-u * U, -u * V, -u]
+
+        # Fila 2i+1: ecuación de v  ->  [0^T, P^T, -v*P^T]
+        Q[2 * i + 1, 3:6] = [U, V, 1]
+        Q[2 * i + 1, 6:9] = [-v * U, -v * V, -v]
+
+    return Q
+
+
+#----------------
+
+
+def vij(H, i, j):
+    """
+    Arma el vector v_ij de 6 entradas tal que c_i^T B c_j = v_ij^T b,
+    con b = [B11, B12, B22, B13, B23, B33]^T y c_i la i-ésima columna de H.
+
+    Parámetros:
+        H: matriz de 3 x 3 (homografía de una vista).
+        i, j: índices de columna.
+
+    Retorna:
+        v: vector de 6 coordenadas.
+    """
+    H = np.asarray(H)
+    v = np.zeros(6)
+    # H[k, i] es la componente k de la columna c_i (h_{i,k+1})
+    v[0] = H[0, i] * H[0, j]
+    v[1] = H[0, i] * H[1, j] + H[1, i] * H[0, j]
+    v[2] = H[1, i] * H[1, j]
+    v[3] = H[2, i] * H[0, j] + H[0, i] * H[2, j]
+    v[4] = H[2, i] * H[1, j] + H[1, i] * H[2, j]
+    v[5] = H[2, i] * H[2, j]
+    return v
+
+
+def armarA(Hlst):
+    """
+    Arma la matriz A del sistema homogéneo Ab = 0, r1 y r2 ortonormales, donde
+    b = [B11, B12, B22, B13, B23, B33]^T y B = K^{-T} K^{-1}.
+
+    Parámetros:
+        Hlst: lista de N matrices H_j de 3 x 3, obtenidas
+              con el DLT de puntos coplanares.
+
+    Retorna:
+        A: matriz de 2N x 6. Cada vista j aporta dos filas:
+           fila 2j:   v12^T          (c1^T B c2 = 0, perpendicularidad)
+           fila 2j+1: (v11 - v22)^T  (c1^T B c1 = c2^T B c2, igual norma)
+    """
+    N = len(Hlst)                 # cantidad de vistas
+    A = np.zeros((2 * N, 6))      # 2 ecuaciones por vista, 6 incógnitas en b
+
+    for j in range(N):
+        H = np.asarray(Hlst[j])
+        H = H / H[2, 2]           # normalizo la escala de cada H
+
+        v12 = vij(H, 0, 1)        # c1 con c2
+        v11 = vij(H, 0, 0)        # c1 con c1
+        v22 = vij(H, 1, 1)        # c2 con c2
+
+        A[2 * j] = v12
+        A[2 * j + 1] = v11 - v22
+
+    return A
+
+
+def vectorMenorSingular(M): #AUX
+    """
+    Devuelve el vector unitario x que minimiza ||Mx|| con ||x|| = 1.
+    Es el autovector de menor autovalor de M^T M (= vector singular derecho
+    del menor valor singular de M). Sirve para el DLT (Q h = 0) y para A b = 0.
+
+    Parámetros:
+        M: array de m x n.
+    Retorna:
+        x: array de n, de norma 1.
+    """
+    MtM = arroba(M.T, M)
+    S, D = diagRH(MtM)          # S: autovectores (columnas), D: diagonal de autovalores
+    n = MtM.shape[0]
+
+    idx = 0
+    for i in range(1, n):
+        if D[i, i] < D[idx, idx]: #recorre valores singulares y se queda con el menor
+            idx = i
+
+    x = S[:, idx].copy()
+    return x / norma(x, 2)
+
+
+def choleskyPropio(B): #AUX
+    """
+    Factorización de Cholesky B = L L^T, con L triangular inferior.
+    Parámetros: B (n x n) simétrica definida positiva.
+    Retorna: L (n x n), o None si B no es definida positiva.
+    """
+    n = B.shape[0]
+    L = np.zeros((n, n))
+    for j in range(n):
+        suma = 0.0
+        for k in range(j):
+            suma = suma + L[j, k] * L[j, k]
+        d = B[j, j] - suma
+        if d <= 0:
+            return None                      # B no es definida positiva
+        L[j, j] = np.sqrt(d)
+        for i in range(j + 1, n):
+            suma = 0.0
+            for k in range(j):
+                suma = suma + L[i, k] * L[j, k]
+            L[i, j] = (B[i, j] - suma) / L[j, j]
+    return L
+
+
+def productoCruz(a, b): #AUX
+    """Producto vectorial de dos vectores de R^3."""
+    c = np.zeros(3)
+    c[0] = a[1] * b[2] - a[2] * b[1]
+    c[1] = a[2] * b[0] - a[0] * b[2]
+    c[2] = a[0] * b[1] - a[1] * b[0]
+    return c
+
+
+def calcularMatrizK2D(A):
+    """
+    Calcula K a partir de A (2N x 6), donde A b = 0 con
+    b = [B11, B12, B22, B13, B23, B33]^T y B = K^{-T} K^{-1}.
+    Retorna K (3 x 3, triangular superior, K[2,2] = 1), o None si B no
+    resulta definida positiva.
+    """
+    # Mínimos cuadrados homogéneos
+    b = vectorMenorSingular(A)
+
+    # Reconstruir B simétrica
+    B = np.array([[b[0], b[1], b[3]],
+                  [b[1], b[2], b[4]],
+                  [b[3], b[4], b[5]]])
+
+    # Signo: B debe ser definida positiva (diagonal positiva), elige signo tal que lo sea
+    if B[0, 0] < 0:
+        B = -1.0 * B
+
+    # Cholesky: B = L L^T, L = K^{-T}  =>  K = (L^T)^{-1}
+    L = choleskyPropio(B)
+    if L is None:
+        return None
+    K = inversa(L.T)
+
+    # Normalizar K[2,2] = 1
+    return K / K[2, 2]
+
+
+def obtenerPose2D(Hj, K):
+    """
+    Pose (R, t) de la vista j a partir de su homografía Hj (3x3, ya
+    desnormalizada) y de K. t queda en las unidades de objPts (mm).
+    """
+    Hj = np.asarray(Hj, dtype=float)
+    Kinv = inversa(K)
+
+    # K^{-1} c_i  (r_i salvo escala)
+    a1 = arroba(Kinv, Hj[:, 0])
+    a2 = arroba(Kinv, Hj[:, 1])
+    a3 = arroba(Kinv, Hj[:, 2])
+
+    lam = 1.0 / norma(a1, 2)            # ||r1|| = 1
+    r1, r2, t = lam * a1, lam * a2, lam * a3
+
+    # Signo: el tablero debe quedar delante de la cámara (t_z > 0)
+    if t[2] < 0:
+        r1, r2, t = -1.0 * r1, -1.0 * r2, -1.0 * t
+
+    # Tercer eje y matriz con columnas [r1 r2 r3]
+    r3 = productoCruz(r1, r2)
+    M = np.zeros((3, 3))
+    M[:, 0] = r1
+    M[:, 1] = r2
+    M[:, 2] = r3
+
+    # Ortonormalización con Gram-Schmidt
+    R, _ = QR_con_GS(M)
+    return R, t
+
+def normalizarPuntos(pts):
+    """
+    Normalizacion isotropica de Hartley: lleva el centroide al origen y escala para que la
+    distancia media al origen sea sqrt(2).
+    Parametros: pts, array de n x 2.
+    Retorna: (pts_norm de n x 2, T de 3 x 3) con p_norm = T p (en coordenadas homogeneas).
+    """
+    pts = np.array(pts, dtype=float)
+    n = pts.shape[0]
+    cx = np.mean(pts[:, 0])
+    cy = np.mean(pts[:, 1])
+    d = np.sqrt((pts[:, 0] - cx) ** 2 + (pts[:, 1] - cy) ** 2)
+    s = np.sqrt(2.0) / np.mean(d)
+    T = np.array([[s, 0.0, -s * cx],
+                  [0.0, s, -s * cy],
+                  [0.0, 0.0, 1.0]])
+    pn = np.zeros((n, 2))
+    pn[:, 0] = s * (pts[:, 0] - cx)
+    pn[:, 1] = s * (pts[:, 1] - cy)
+    return pn, T
+
+
+def estimarHomografia(imgPts, objPts):
+    Q = obtenerQ2d(imgPts, objPts)
+    h = vectorMenorSingular(Q)
+    H = h.reshape(3, 3)
+    return H / H[2, 2]
+
+def errorReproyeccion(R, t, K, objPts, imgPts):
+    """Error medio (px) de reproyectar los puntos planos objPts (W = 0) con K [R | t]."""
+    n = objPts.shape[0]
+    suma = 0.0
+    for i in range(n):
+        P = np.array([objPts[i, 0], objPts[i, 1], 0.0])
+        Xc = arroba(R, P) + t
+        h = arroba(K, Xc)
+        du = h[0] / h[2] - imgPts[i, 0]
+        dv = h[1] / h[2] - imgPts[i, 1]
+        suma = suma + np.sqrt(du * du + dv * dv)
+    return suma / n
+
+# FUNCIONES EJERCICIO 5
+
+# FUNCIONES AUXILIARES
+def extraerTiempoMs(nombreArchivo):
+    """Extrae la estampa temporal en segundos con precisión de milisegundos."""
+    base = os.path.basename(nombreArchivo)
+    partes = base.split('.')[0].split('_')
+    partes_num = [p for p in partes if p.isdigit()]
+    if len(partes_num) >= 4:
+        h, m, s, ms = map(float, partes_num[:4])
+        return h * 3600.0 + m * 60.0 + s + (ms / 1000.0)
+    return 0.0
+
+def proyectarPuntoImagenAPiso(m, H_inv):
+    """Transforma un punto en píxeles [u, v, 1] al suelo métrico [X, Y] en metros."""
+    P_homog = arroba(H_inv, m)
+    if abs(P_homog[2]) > 1e-15:
+        return np.array([P_homog[0] / P_homog[2], P_homog[1] / P_homog[2]])
+    return np.array([P_homog[0], P_homog[1]])
+
+def estimarHomografiaHartley(imgPts, objPts):
+    """
+    Estima la homografía 2D H aplicando normalización isotrópica de Hartley
+    y desnormalizando al final: H = T_img^{-1} * H_norm * T_obj.
+    """
+    img_n, T_img = normalizarPuntos(imgPts)
+    obj_n, T_obj = normalizarPuntos(objPts)
+
+    H_n = estimarHomografia(img_n, obj_n)
+
+    T_img_inv = inversa(T_img)
+    H = arroba(T_img_inv, arroba(H_n, T_obj))
+    return H / H[2, 2]
+
+# EJERCICIO 5.a: PARÁMETROS INTRÍNSECOS K (MÉTODO DE ZHANG)
+def calcularKZhangRestringido(Hlst, u0=800.0, v0=600.0):
+    """
+    Estima K por Zhang imponiendo sesgo=0, alpha_u=alpha_v=f y centro en (u0, v0).
+    Normaliza cada homografía y cada ecuación para equilibrar el ajuste lineal.
+    """
+    T_c = np.array([[1.0, 0.0, -u0],
+                    [0.0, 1.0, -v0],
+                    [0.0, 0.0, 1.0]])
+
+    a_list, b_list = [], []
+    for H in Hlst:
+        Hc = arroba(T_c, H)
+        Hc = Hc / norma(Hc.flatten(), 2)
+        h1, h2 = Hc[:, 0], Hc[:, 1]
+
+        a1 = h1[0] * h2[0] + h1[1] * h2[1]
+        b1 = -(h1[2] * h2[2])
+
+        a2 = (h1[0]**2 + h1[1]**2) - (h2[0]**2 + h2[1]**2)
+        b2 = -(h1[2]**2 - h2[2]**2)
+
+        n1 = np.hypot(a1, b1)
+        n2 = np.hypot(a2, b2)
+        a_list.extend([a1 / n1, a2 / n2])
+        b_list.extend([b1 / n1, b2 / n2])
+
+    a = np.array(a_list, dtype=float)
+    b = np.array(b_list, dtype=float)
+
+    x = np.dot(a, b) / np.dot(a, a)
+    f = 1.0 / np.sqrt(x)
+
+    return np.array([[f, 0.0, u0],
+                     [0.0, f, v0],
+                     [0.0, 0.0, 1.0]])
+
+
+def calcularIntrinsecosSalguero(world_img_pts_csv, restringir_K=True, u0=800.0, v0=600.0):
+    """
+    Calcula K tratando los 5 puntos de world_img_pts.csv como coplanares (Z ~ 0)
+    mediante el método de Zhang (versión libre y versión restringida).
+    """
+    df = pd.read_csv(world_img_pts_csv, sep=';')
+    objPts_2d = df[['X', 'Y']].values
+
+    columnas = list(df.columns)
+    vistas = [c.split('_')[1] for c in columnas if c.startswith('u_') and f"v_{c.split('_')[1]}" in columnas]
+
+    Hlst = []
+    for k in range(len(vistas)):
+        imgPts_k = df[[f'u_{k}', f'v_{k}']].values
+        Hlst.append(estimarHomografiaHartley(imgPts_k, objPts_2d))
+
+    K_zhang_libre = calcularMatrizK2D(armarA(Hlst))
+    K_zhang_restringido = calcularKZhangRestringido(Hlst, u0=u0, v0=v0)
+
+    if restringir_K:
+        return K_zhang_restringido, K_zhang_libre
+    return K_zhang_libre, K_zhang_restringido
+
+def estimarPoseDesdeHomografia(K, H):
+    """
+    Extrae R (ortogonalizada en SO(3) vía SVD) y t a partir de K y la homografía H.
+    """
+    K_inv = inversa(K)
+    K_inv_H = arroba(K_inv, H)
+
+    h1, h2, h3 = K_inv_H[:, 0], K_inv_H[:, 1], K_inv_H[:, 2]
+    n1, n2 = norma(h1, 2), norma(h2, 2)
+    lam = 2.0 / (n1 + n2)
+
+    r1, r2, t = lam * h1, lam * h2, lam * h3
+
+    if t[2] < 0:
+        r1, r2, t = -r1, -r2, -t
+
+    r3 = productoCruz(r1, r2)
+    R_raw = np.column_stack((r1, r2, r3))
+
+    # svd_reducida retorna (U, S, V) sin trasponer
+    U, _, V = svd_reducida(R_raw)
+    Vt = traspuesta(V)
+    R = arroba(U, Vt)
+
+    if np.linalg.det(R) < 0:
+        U[:, -1] *= -1.0
+        R = arroba(U, Vt)
+
+    C = -arroba(traspuesta(R), t)
+    return R, t, C
+
+def optimizarFocalPorReproyeccion(world_img_pts_csv, f_min=500.0, f_max=5000.0, pasos=450, u0=800.0, v0=600.0):
+    """
+    Busca la distancia focal f (con sesgo=0, fx=fy=f, centro=(u0, v0)) que minimiza
+    el error RMS geométrico de reproyección promedio en las 4 vistas de world_img_pts.csv.
+    """
+    df = pd.read_csv(world_img_pts_csv, sep=';')
+    objPts_2d = df[['X', 'Y']].values
+    objPts_3d = df[['X', 'Y', 'Z']].values
+    # Si se tratan como coplanares para la calibración:
+    objPts_plano = np.column_stack((objPts_2d, np.zeros(len(objPts_2d))))
+
+    columnas = list(df.columns)
+    vistas = [c.split('_')[1] for c in columnas if c.startswith('u_') and f"v_{c.split('_')[1]}" in columnas]
+
+    # Precalculamos las 4 homografías una sola vez
+    vistas_data = []
+    for k in range(len(vistas)):
+        imgPts_k = df[[f'u_{k}', f'v_{k}']].values
+        H_k = estimarHomografiaHartley(imgPts_k, objPts_2d)
+        vistas_data.append((imgPts_k, H_k))
+
+    mejor_f = None
+    mejor_rms = float('inf')
+    historial_f = np.linspace(f_min, f_max, pasos)
+    historial_rms = []
+
+    for f in historial_f:
+        K_cand = np.array([[f, 0.0, u0],
+                           [0.0, f, v0],
+                           [0.0, 0.0, 1.0]])
+        err_cuad_total = []
+        for imgPts_k, H_k in vistas_data:
+            R_k, t_k, _ = estimarPoseDesdeHomografia(K_cand, H_k)
+            for i in range(len(objPts_plano)):
+                P_cam = arroba(R_k, objPts_plano[i]) + t_k
+                m_hat = arroba(K_cand, P_cam)
+                u_hat, v_hat = m_hat[0] / m_hat[2], m_hat[1] / m_hat[2]
+                err_cuad_total.append((imgPts_k[i, 0] - u_hat)**2 + (imgPts_k[i, 1] - v_hat)**2)
+
+        rms = np.sqrt(np.mean(err_cuad_total))
+        historial_rms.append(rms)
+        if rms < mejor_rms:
+            mejor_rms = rms
+            mejor_f = f
+
+    K_opt = np.array([[mejor_f, 0.0, u0],
+                      [0.0, mejor_f, v0],
+                      [0.0, 0.0, 1.0]])
+    return K_opt, mejor_rms, historial_f, np.array(historial_rms)
+
+# EJERCICIO 5.b: POSE DE CÁMARA (R, t) Y REPROYECCIÓN CON K[R|t]
+def estimarPoseYReproyectar(file_pts, K, img_path=None, mostrar_grafico=True):
+    """
+    Calcula la pose (R, t) a partir de los 51 puntos sobre la calle (Z=0)
+    y reproyecta directamente usando K(R * X_w + t).
+    """
+    data = np.loadtxt(file_pts)
+    objPts = traspuesta(data[1:4, :])  # (51, 3) en metros (X, Y, Z)
+    objPts[:, 2] = 0.0 # forzamos Z=0
+    imgPts = traspuesta(data[4:6, :])  # (51, 2) en píxeles (u, v)
+    n_pts = objPts.shape[0]
+
+    # Homografía del plano Z=0 y pose 3D (R, t)
+    H_calle = estimarHomografiaHartley(imgPts, objPts[:, :2])
+    R, t, C = estimarPoseDesdeHomografia(K, H_calle)
+
+    # 2. Reproyección directa con K[R|t]
+    puntos_reproyectados = np.zeros((n_pts, 2))
+    suma_err_sq = 0.0
+
+    for i in range(n_pts):
+        P_cam = arroba(R, objPts[i]) + t
+        m_hat = arroba(K, P_cam)
+        u_hat = m_hat[0] / m_hat[2]
+        v_hat = m_hat[1] / m_hat[2]
+
+        puntos_reproyectados[i, 0] = u_hat
+        puntos_reproyectados[i, 1] = v_hat
+        suma_err_sq += (imgPts[i, 0] - u_hat) ** 2 + (imgPts[i, 1] - v_hat) ** 2
+
+    RMS = np.sqrt(suma_err_sq / float(n_pts))
+
+    if mostrar_grafico and img_path is not None:
+        im = mpimg.imread(img_path)
+        fig, ax = plt.subplots(figsize=(12, 8))
+        ax.imshow(im)
+        ax.scatter(imgPts[:, 0], imgPts[:, 1], c='lime', s=40, label='Puntos medidos (ground truth)', zorder=3)
+        ax.scatter(puntos_reproyectados[:, 0], puntos_reproyectados[:, 1], c='red', s=35, marker='x', label='Reproyectados con K[R|t]', zorder=4)
+        for i in range(n_pts):
+            ax.plot([imgPts[i, 0], puntos_reproyectados[i, 0]],
+                    [imgPts[i, 1], puntos_reproyectados[i, 1]], color='yellow', linewidth=0.8, zorder=2)
+        ax.set_title(f'Ejercicio 5.b - Reproyección con K[R|t] (RMS: {RMS:.3f} px)')
+        ax.legend()
+        plt.tight_layout()
+        plt.savefig('reproyeccion_salguero.png')
+        plt.show()
+
+    return R, t, C, H_calle, RMS, puntos_reproyectados
+
+def graficarOptimizacionFocal(f_vals, rms_vals, f_opt, rms_opt, f_analitica=None):
+    """Grafica el error RMS de reproyección en función de la distancia focal f."""
+    plt.figure(figsize=(9, 5))
+    plt.plot(f_vals, rms_vals, color='navy', linewidth=2, label='RMS geométrico (4 vistas)')
+    plt.axvline(f_opt, color='red', linestyle='--', linewidth=1.5,
+                label=f'f óptimo = {f_opt:.1f} px (RMS = {rms_opt:.2f} px)')
+    plt.scatter([f_opt], [rms_opt], color='red', s=60, zorder=5)
+
+    if f_analitica is not None:
+        plt.axvline(f_analitica, color='darkorange', linestyle=':', linewidth=1.8,
+                    label=f'f Zhang analítico = {f_analitica:.1f} px')
+
+    plt.title('Ejercicio 5.a - Refinamiento 1D de la distancia focal f')
+    plt.xlabel('Distancia focal f (px)')
+    plt.ylabel('Error RMS de reproyección (px)')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig('optimizacion_focal_5a.png')
+    plt.show()
+
+def graficarVelocidades(tablaVelocidades):
+    """Grafica la evolución temporal de las velocidades de los tres agentes."""
+    plt.figure(figsize=(10, 6))
+    agentes = ['Taxi', 'Camioneta', 'Peatona']
+    colores = {'Taxi': 'goldenrod', 'Camioneta': 'blue', 'Peatona': 'red'}
+    estilos = {'Taxi': 'o-', 'Camioneta': 's-', 'Peatona': '^-'}
+
+    t0 = min([f['t_i'] for f in tablaVelocidades]) if len(tablaVelocidades) > 0 else 0.0
+
+    for agente in agentes:
+        filas = [f for f in tablaVelocidades if f['agente'] == agente]
+        if len(filas) > 0:
+            x_vals = [(f['t_i'] + f['t_f']) / 2.0 - t0 for f in filas]
+            vels = [f['v_kmh'] for f in filas]
+            plt.plot(x_vals, vels, estilos[agente], color=colores[agente],
+                     label=agente, linewidth=2, markersize=8)
+
+    plt.title('Ejercicio 5.c - Evolución Temporal de Velocidades en Calle Salguero')
+    plt.xlabel('Tiempo relativo desde la primera captura (s)')
+    plt.ylabel('Velocidad estimada (km/h)')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig('velocidades_salguero.png')
+    plt.show()
+
+def estimarVelocidadAgentes(secuencia_capturas, H_calle, tracking_agentes, factor_escala_x=1.0, factor_escala_y=1.0):
+    """
+    Calcula frame a frame la posición en el plano (X, Y) en metros, el desplazamiento
+    y la velocidad (en m/s y km/h) del Taxi, la Camioneta y la Peatona.
+    """
+    H_inv = inversa(H_calle)
+    Tabla_Velocidades = []
+    agentes = ['Taxi', 'Camioneta', 'Peatona']
+
+    for agente in agentes:
+        if agente not in tracking_agentes:
+            continue
+        registros = tracking_agentes[agente]
+        num_frames = min(len(registros), len(secuencia_capturas))
+
+        for k in range(num_frames - 1):
+            t_k = extraerTiempoMs(secuencia_capturas[k])
+            t_k1 = extraerTiempoMs(secuencia_capturas[k + 1])
+            dt = t_k1 - t_k
+
+            u_k = registros[k][0] * factor_escala_x
+            v_k = registros[k][1] * factor_escala_y
+            u_k1 = registros[k + 1][0] * factor_escala_x
+            v_k1 = registros[k + 1][1] * factor_escala_y
+
+            P_k = proyectarPuntoImagenAPiso(np.array([u_k, v_k, 1.0]), H_inv)
+            P_k1 = proyectarPuntoImagenAPiso(np.array([u_k1, v_k1, 1.0]), H_inv)
+
+            dist_m = norma(P_k1 - P_k, 2)
+            v_ms = dist_m / dt if dt > 0.0 else 0.0
+
+            Tabla_Velocidades.append({
+                'agente': agente,
+                'frame_i': k,
+                'frame_f': k + 1,
+                'archivo_i': os.path.basename(secuencia_capturas[k]),
+                'archivo_f': os.path.basename(secuencia_capturas[k + 1]),
+                't_i': t_k,
+                't_f': t_k1,
+                'X_i': P_k[0],
+                'Y_i': P_k[1],
+                'X_f': P_k1[0],
+                'Y_f': P_k1[1],
+                'dist_m': dist_m,
+                'dt': dt,
+                'v_ms': v_ms,
+                'v_kmh': v_ms * 3.6
+            })
+
+    return Tabla_Velocidades
+
+# Tracking manual (u, v) medido en imágenes de 1600x1200, ordenado cronológicamente
+tracking_agentes = {
+        'Peatona': [
+            (420.0,500.0),  # 10:18:47.351 - cruzando senda peatonal
+            (434.0,502.0),  # 10:18:47.461
+            (456.0, 500.0),  # 10:18:47:554
+            (470.0, 500.0),  # 10:18:47.679
+            (478.0, 500.0),  # 10:18:47.835
+            (498.0, 500.0),  # 10:18:47.882
+            (514.0, 499.0),  # 10:18:48.022
+            (521.0, 497.0),  # 10:18:48.163
+            (535.0, 496.0),  # 10:18:48.209
+            (546.0, 496.0),  # 10:18:48.350
+            (554.0, 498.0),  # 10:18:48.475
+            (584.0, 495.0),  # 10:18:48.724
+            (597.0, 497.0),  # 10:18:48.818
+            (619.0, 499.0),  # 10:18:49.005
+            (640.0, 497.0),  # 10:18:49.099
+            (647.0, 495.0),  # 10:18:49.286
+            (668.0, 494.0),  # 10:18:49.317
+            (686.0, 497.0),  # 10:18:49.457
+            (694.0, 495.0),  # 10:18:49.582
+            (700.0, 495.0),  # 10:18:49.660
+            (728.0, 494.0),  # 10:18:49.785
+            (741.0, 493.0),  # 10:18:49.879
+            (743.0, 495.0),  # 10:18:49.988
+            (760.0, 495.0),  # 10:18:50.128
+            (772.0, 495.0),  # 10:18:50.206
+            (785.0, 494.0),  # 10:18:50.300
+            (792.0, 495.0),  # 10:18:50.471
+            (808.0, 494.0),  # 10:18:50.534
+            (821.0, 494.0),  # 10:18:50.674
+            (834.0, 494.0),  # 10:18:50.783
+            (844.0, 491.0),  # 10:18:50.893
+            (852.0, 496.0),  # 10:18:50.986
+            (863.0, 494.0),  # 10:18:51.173
+            (877.0, 494.0),  # 10:18:51.251
+            (888.0, 492.0),  # 10:18:51.345
+            (904.0, 491.0),  # 10:18:51.470
+            (909.0, 492.0),  # 10:18:51.563
+            (918.0, 492.0),  # 10:18:51.657
+            (930.0, 491.0),  # 10:18:51.844
+            (944.0, 490.0),  # 10:18:51.875
+            (958.0, 492.0),  # 10:18:52.000
+            (964.0, 492.0),  # 10:18:52.109
+            (973.0, 492.0),  # 10:18:52.219
+            (978.0, 492.0),  # 10:18:52.312
+            (980.0, 492.0),  # 10:18:52.453
+            (992.0, 492.0),  # 10:18:52.546
+        ],
+        'Taxi': [
+            (930.0, 269.0),  # 10:18:47.351 - carril izquierdo acercándose
+            (929.0, 271.0),  # 10:18:47.461
+            (923.0, 272.0),  # 10:18:47:554
+            (920.0, 275.0),  # 10:18:47.679
+            (915.0, 275.0),  # 10:18:47.835
+            (912.0, 277.0),  # 10:18:47.882
+            (907.0, 281.0),  # 10:18:48.022
+            (905.0, 280.0),  # 10:18:48.163
+            (900.0, 284.0),  # 10:18:48.209
+            (897.0, 285.0),  # 10:18:48.350
+            (893.0, 286.0),  # 10:18:48.475
+            (886.0, 290.0),  # 10:18:48.724
+            (879.0, 292.0),  # 10:18:48.818
+            (867.0, 296.0),  # 10:18:49.005
+            (861.0, 299.0),  # 10:18:49.099
+            (857.0, 301.0),  # 10:18:49.286
+            (844.0, 303.0),  # 10:18:49.317
+            (840.0, 308.0),  # 10:18:49.457
+            (833.0, 310.0),  # 10:18:49.582
+            (829.0, 312.0),  # 10:18:49.660
+            (816.0, 317.0),  # 10:18:49.785
+            (806.0, 324.0),  # 10:18:49.879
+            (802.0, 324.0),  # 10:18:49.988
+            (792.0, 331.0),  # 10:18:50.128
+            (780.0, 335.0),  # 10:18:50.206
+            (770.0, 340.0),  # 10:18:50.300
+            (762.0, 345.0),  # 10:18:50.471
+            (751.0, 352.0),  # 10:18:50.534
+            (737.0, 357.0),  # 10:18:50.674
+            (729.0, 361.0),  # 10:18:50.783
+            (714.0, 366.0),  # 10:18:50.893
+            (704.0, 370.0),  # 10:18:50.986
+            (684.0, 384.0),  # 10:18:51.173
+            (663.0, 390.0),  # 10:18:51.251
+            (639.0, 404.0),  # 10:18:51.345
+            (630.0, 408.0),  # 10:18:51.470
+            (604.0, 418.0),  # 10:18:51.563
+            (589.0, 425.0),  # 10:18:51.657
+            (561.0, 442.0),  # 10:18:51.844
+            (521.0, 456.0),  # 10:18:51.875
+            (486.0, 477.0),  # 10:18:52.000
+            (463.0, 484.0),  # 10:18:52.109
+            (416.0, 503.0),  # 10:18:52.219
+            (384.0, 516.0),  # 10:18:52.312
+            (323.0, 547.0),  # 10:18:52.453
+            (284.0, 557.0),  # 10:18:52.546
+        ],
+        'Camioneta': [
+            (995.0, 261.0),  # 10:18:47.351 - carril central detrás del taxi
+            (994.0, 260.0),  # 10:18:47.461
+            (994.0, 263.0),  # 10:18:47:554
+            (993.0, 263.0),  # 10:18:47.679
+            (991.0, 266.0),  # 10:18:47.835
+            (990.0, 266.0),  # 10:18:47.882
+            (991.0, 268.0),  # 10:18:48.022
+            (988.0, 269.0),  # 10:18:48.163
+            (989.0, 271.0),  # 10:18:48.209
+            (990.0, 270.0),  # 10:18:48.350
+            (989.0, 272.0),  # 10:18:48.475 
+            (986.0, 275.0),  # 10:18:48.724
+            (983.0, 278.0),  # 10:18:48.818
+            (983.0, 281.0),  # 10:18:49.005
+            (981.0, 281.0),  # 10:18:49.099
+            (979.0, 285.0),  # 10:18:49.286
+            (975.0, 285.0),  # 10:18:49.317
+            (972.0, 287.0),  # 10:18:49.457
+            (972.0, 289.0),  # 10:18:49.582
+            (971.0, 291.0),  # 10:18:49.660
+            (964.0, 296.0),  # 10:18:49.785
+            (962.0, 298.0),  # 10:18:49.879
+            (960.0, 300.0),  # 10:18:49.988
+            (957.0, 303.0),  # 10:18:50.128
+            (952.0, 307.0),  # 10:18:50.206
+            (948.0, 311.0),  # 10:18:50.300
+            (945.0, 311.0),  # 10:18:50.471
+            (941.0, 316.0),  # 10:18:50.534
+            (934.0, 321.0),  # 10:18:50.674
+            (932.0, 324.0),  # 10:18:50.783
+            (928.0, 328.0),  # 10:18:50.893
+            (925.0, 332.0),  # 10:18:50.986
+            (915.0, 336.0),  # 10:18:51.173
+            (912.0, 344.0),  # 10:18:51.251
+            (900.0, 350.0),  # 10:18:51.345
+            (896.0, 355.0),  # 10:18:51.470
+            (886.0, 363.0),  # 10:18:51.563
+            (882.0, 368.0),  # 10:18:51.657
+            (873.0, 374.0),  # 10:18:51.844
+            (862.0, 386.0),  # 10:18:51.875
+            (848.0, 398.0),  # 10:18:52.000
+            (841.0, 403.0),  # 10:18:52.109
+            (824.0, 415.0),  # 10:18:52.219
+            (818.0, 421.0),  # 10:18:52.312
+            (795.0, 438.0),  # 10:18:52.453
+            (788.0, 449.0),  # 10:18:52.546
+        ]
+    }
+
+def suavizarTrackingManual(tracking_dict, secuencia_capturas, H_calle, grado=2):
+    """
+    Suaviza el ruido de clic manual (+/- 1-2 px) ajustando la trayectoria en el plano
+    del suelo (X(t), Y(t)) en función del tiempo REAL de cada captura mediante
+    regresión polinomial (QR_con_GS y res_tri de py).
+    """
+    H_inv_temp = inversa(H_calle)
+    tracking_suave = {}
+
+    # Tiempos reales de las capturas
+    tiempos = np.array([extraerTiempoMs(f) for f in secuencia_capturas], dtype=float)
+
+    for ag, pts in tracking_dict.items():
+        n = min(len(pts), len(tiempos))
+        t_ag = tiempos[:n]
+        # Normalizamos el tiempo a [0, 1] para buen condicionamiento de Vandermonde
+        t_norm = (t_ag - t_ag[0]) / (t_ag[-1] - t_ag[0]) if (t_ag[-1] - t_ag[0]) > 0 else np.linspace(0.0, 1.0, n)
+
+        # Proyectamos los clics al piso (Z=0) en metros
+        XY = np.zeros((n, 2))
+        for k in range(n):
+            XY[k] = proyectarPuntoImagenAPiso(np.array([pts[k][0], pts[k][1], 1.0]), H_inv_temp)
+
+        # Matriz de Vandermonde V (n x (grado + 1)) en función de t_norm
+        V = np.zeros((n, grado + 1))
+        for d in range(grado + 1):
+            V[:, d] = t_norm ** d
+
+        Q_v, R_v = QR_con_GS(V)
+        coef_X = res_tri(R_v, arroba(traspuesta(Q_v), XY[:, 0]), inferior=False)
+        coef_Y = res_tri(R_v, arroba(traspuesta(Q_v), XY[:, 1]), inferior=False)
+
+        X_suave = arroba(V, coef_X)
+        Y_suave = arroba(V, coef_Y)
+
+        # Reproyectamos a coordenadas de imagen (u, v) con H_calle
+        pts_suaves = []
+        for k in range(n):
+            m_hat = arroba(H_calle, np.array([X_suave[k], Y_suave[k], 1.0]))
+            pts_suaves.append((float(m_hat[0] / m_hat[2]), float(m_hat[1] / m_hat[2])))
+
+        tracking_suave[ag] = pts_suaves
+
+    return tracking_suave
